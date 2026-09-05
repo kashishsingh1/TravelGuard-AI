@@ -116,9 +116,10 @@ async def run_autonomous(request: RunRequest):
         except Exception as exc:
             raise HTTPException(status_code=500, detail=f"Autonomous pipeline error: {str(exc)}")
 
+    computed_diff = diff_text if scenario_key else "\n".join(f.diff for f in change_set.files if f.diff)
     res_dict = result.model_dump()
     res_dict["change_set"] = change_set.model_dump()
-    res_dict["raw_diff"] = change_set.raw_diff if not scenario_key else diff_text
+    res_dict["raw_diff"] = computed_diff
     return res_dict
 
 

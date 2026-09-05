@@ -120,7 +120,16 @@ export const TravelGuardConsole: React.FC<TravelGuardConsoleProps> = ({ onSwitch
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ scenario: scenarioKey, mock_llm: mockLlm }),
       });
-      if (!res.ok) throw new Error((await res.json()).detail || 'Analysis failed');
+      if (!res.ok) {
+        let errDetail = 'Analysis failed';
+        try {
+          const errData = await res.json();
+          errDetail = errData.detail || errDetail;
+        } catch {
+          errDetail = (await res.text()) || errDetail;
+        }
+        throw new Error(errDetail);
+      }
       setIntelligenceResult(await res.json());
     } catch (e: any) {
       setErrorMsg(e.message || 'An error occurred during analysis');
@@ -145,7 +154,16 @@ export const TravelGuardConsole: React.FC<TravelGuardConsoleProps> = ({ onSwitch
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ scenario: scenarioKey, mock_llm: mockLlm }),
       });
-      if (!res.ok) throw new Error((await res.json()).detail || 'Autonomous run failed');
+      if (!res.ok) {
+        let errDetail = 'Autonomous run failed';
+        try {
+          const errData = await res.json();
+          errDetail = errData.detail || errDetail;
+        } catch {
+          errDetail = (await res.text()) || errDetail;
+        }
+        throw new Error(errDetail);
+      }
       const data: AutonomousRunResult = await res.json();
       setAutonomousResult(data);
 
@@ -212,7 +230,16 @@ export const TravelGuardConsole: React.FC<TravelGuardConsoleProps> = ({ onSwitch
           test_name: testName,
         }),
       });
-      if (!res.ok) throw new Error((await res.json()).detail || 'Test execution failed');
+      if (!res.ok) {
+        let errDetail = 'Test execution failed';
+        try {
+          const errData = await res.json();
+          errDetail = errData.detail || errDetail;
+        } catch {
+          errDetail = (await res.text()) || errDetail;
+        }
+        throw new Error(errDetail);
+      }
       const data = await res.json();
       const mapped = {
         status: data.status,
