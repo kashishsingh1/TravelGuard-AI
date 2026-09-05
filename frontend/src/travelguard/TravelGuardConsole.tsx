@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Shield, Play, CheckCircle2, AlertTriangle, XCircle, Wrench,
   FileCode2, GitBranch, Layers, ExternalLink, Copy, Check,
-  RotateCcw, Sparkles, Activity, ChevronRight, Terminal,
+  RotateCcw, Sparkles, Activity, ChevronRight, ChevronDown, ChevronUp, Terminal,
   TrendingUp, Zap, AlertCircle, Clock,
 } from 'lucide-react';
 import './travelguard.css';
@@ -64,6 +64,14 @@ export const TravelGuardConsole: React.FC<TravelGuardConsoleProps> = ({ onSwitch
   const [runStatusMsg, setRunStatusMsg] = useState<string>('');
   const [copiedCmd, setCopiedCmd] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState<boolean>(false);
+  const [copiedAll, setCopiedAll] = useState<boolean>(false);
+  const [priorityFilter, setPriorityFilter] = useState<'ALL' | 'P0' | 'P1' | 'P2'>('ALL');
+  const [expandedDiffs, setExpandedDiffs] = useState<Record<string, boolean>>({});
+  const [showSkipped, setShowSkipped] = useState<boolean>(false);
+
+  const toggleDiff = (path: string) => {
+    setExpandedDiffs(prev => ({ ...prev, [path]: !prev[path] }));
+  };
 
   const [autonomousResult, setAutonomousResult] = useState<AutonomousRunResult | null>(null);
   const [intelligenceResult, setIntelligenceResult] = useState<IntelligenceResult | null>(null);
@@ -178,6 +186,25 @@ export const TravelGuardConsole: React.FC<TravelGuardConsoleProps> = ({ onSwitch
 
   const selectedTests = intelligenceResult?.selected_tests || autonomousResult?.selected_tests || [];
   const skippedTests  = intelligenceResult?.skipped_tests  || autonomousResult?.skipped_tests  || [];
+
+  const filteredSelectedTests = selectedTests.filter((t: any) => {
+    if (priorityFilter === 'ALL') return true;
+    return t.priority === priorityFilter;
+  });
+
+  const p0Count = selectedTests.filter((t: any) => t.priority === 'P0').length;
+  const p1Count = selectedTests.filter((t: any) => t.priority === 'P1').length;
+
+  const copyAllCmds = () => {
+    const specs = selectedTests
+      .map((t: any) => (t.file || t.test_file || '').replace(/^tests\//, ''))
+      .filter(Boolean);
+    if (!specs.length) return;
+    const combined = `npx playwright test ${specs.join(' ')}`;
+    navigator.clipboard.writeText(combined);
+    setCopiedAll(true);
+    setTimeout(() => setCopiedAll(false), 2000);
+  };
 
   /* ── Pipeline stepper stage logic ─────────────────────────────────────── */
   const steps = [
@@ -300,6 +327,17 @@ export const TravelGuardConsole: React.FC<TravelGuardConsoleProps> = ({ onSwitch
               </React.Fragment>
             ))}
           </div>
+
+          {/* Stepper helper line */}
+          {!isRunning && !autonomousResult && intelligenceResult && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.35rem 0.25rem 0 0.25rem', fontSize: '0.74rem', color: 'var(--tg-text-dim)', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: 'var(--tg-emerald)', display: 'inline-block', boxShadow: '0 0 6px var(--tg-emerald)' }} />
+                <span><strong style={{ color: 'var(--tg-text-muted)' }}>Pre-Commit Intelligence Active:</strong> Stages 1–3 Complete (Impact Analysis & Test Selection).</span>
+              </div>
+              <span style={{ color: 'var(--tg-text-dim)', fontStyle: 'italic' }}>Stages 4–7 execute during full autonomous test run or CI quality gate.</span>
+            </div>
+          )}
         </div>
       </section>
 
@@ -403,11 +441,41 @@ export const TravelGuardConsole: React.FC<TravelGuardConsoleProps> = ({ onSwitch
                   {riskReason}
                 </p>
                 {impact && (
-                  <div style={{ fontSize: '0.78rem', color: 'var(--tg-text-dim)', display: 'flex', gap: '1rem' }}>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--tg-text-dim)', display: 'flex', gap: '1rem', marginTop: '0.2rem' }}>
                     <span><strong>Type:</strong> {impact.change_type || '—'}</span>
                     {impact.is_behavioral !== undefined && (
                       <span><strong>Behavioral:</strong> {impact.is_behavioral ? 'Yes' : 'No'}</span>
                     )}
+                  </div>
+                )}
+                {/* Risk Factor Breakdown Pills */}
+                {impact?.risk?.factors && (
+                  <div style={{ marginTop: '0.45rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                    <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', fontWeight: 700, color: 'var(--tg-text-dim)', letterSpacing: '0.04em' }}>
+                      Score Factors:
+                    </span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                      {impact.risk.factors.journey_criticality && (
+                        <span className="tg-pill" style={{ background: 'rgba(139,92,246,0.15)', color: '#c084fc', border: '1px solid rgba(139,92,246,0.3)', textTransform: 'none' }}>
+                          +{impact.risk.factors.journey_criticality.points}pts Criticality ({impact.risk.factors.journey_criticality.level})
+                        </span>
+                      )}
+                      {impact.risk.factors.change_type && (
+                        <span className="tg-pill" style={{ background: 'rgba(56,189,248,0.15)', color: '#38bdf8', border: '1px solid rgba(56,189,248,0.3)', textTransform: 'none' }}>
+                          +{impact.risk.factors.change_type.points}pts {impact.risk.factors.change_type.type.toUpperCase()} Contract
+                        </span>
+                      )}
+                      {impact.risk.factors.behavioral_impact && impact.risk.factors.behavioral_impact.points > 0 && (
+                        <span className="tg-pill" style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)', textTransform: 'none' }}>
+                          +{impact.risk.factors.behavioral_impact.points}pts Behavioral
+                        </span>
+                      )}
+                      {impact.risk.factors.diff_volume && (
+                        <span className="tg-pill" style={{ background: 'rgba(148,163,184,0.12)', color: '#94a3b8', border: '1px solid rgba(148,163,184,0.25)', textTransform: 'none' }}>
+                          {impact.risk.factors.diff_volume.lines_changed} lines
+                        </span>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -422,20 +490,63 @@ export const TravelGuardConsole: React.FC<TravelGuardConsoleProps> = ({ onSwitch
                       ` (${(intelligenceResult?.change_set?.files || intelligenceResult?.change_set?.changed_files || []).length})`}
                   </span>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                  {(intelligenceResult?.change_set?.files || intelligenceResult?.change_set?.changed_files || []).map((f: any, i: number) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--tg-surface-card)', padding: '0.4rem 0.6rem', borderRadius: '6px', fontSize: '0.78rem' }}>
-                      <span style={{
-                        background: f.status === 'added' ? 'rgba(16,185,129,0.2)' : f.status === 'deleted' ? 'rgba(244,63,94,0.2)' : 'rgba(245,158,11,0.2)',
-                        color:      f.status === 'added' ? '#34d399' : f.status === 'deleted' ? '#fb7185' : '#fbbf24',
-                        padding: '0 0.35rem', borderRadius: '3px', fontWeight: 700,
-                        fontFamily: 'var(--tg-font-mono)', fontSize: '0.7rem',
-                      }}>
-                        {f.status === 'added' ? 'A' : f.status === 'deleted' ? 'D' : 'M'}
-                      </span>
-                      <code style={{ color: 'var(--tg-cyan)', fontSize: '0.77rem' }}>{f.path || f.file_path}</code>
-                    </div>
-                  ))}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                  {(intelligenceResult?.change_set?.files || intelligenceResult?.change_set?.changed_files || []).map((f: any, i: number) => {
+                    const filePath = f.path || f.file_path;
+                    const isExpanded = !!expandedDiffs[filePath];
+                    return (
+                      <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', background: 'var(--tg-surface-card)', padding: '0.5rem 0.65rem', borderRadius: '6px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.78rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <span style={{
+                              background: f.status === 'added' ? 'rgba(16,185,129,0.2)' : f.status === 'deleted' ? 'rgba(244,63,94,0.2)' : 'rgba(245,158,11,0.2)',
+                              color:      f.status === 'added' ? '#34d399' : f.status === 'deleted' ? '#fb7185' : '#fbbf24',
+                              padding: '0 0.35rem', borderRadius: '3px', fontWeight: 700,
+                              fontFamily: 'var(--tg-font-mono)', fontSize: '0.7rem',
+                            }}>
+                              {f.status === 'added' ? 'A' : f.status === 'deleted' ? 'D' : 'M'}
+                            </span>
+                            <code style={{ color: 'var(--tg-cyan)', fontSize: '0.77rem' }}>{filePath}</code>
+                          </div>
+                          {f.diff && (
+                            <button
+                              type="button"
+                              onClick={() => toggleDiff(filePath)}
+                              style={{
+                                background: isExpanded ? 'rgba(56,189,248,0.15)' : 'rgba(255,255,255,0.05)',
+                                border: '1px solid ' + (isExpanded ? 'rgba(56,189,248,0.3)' : 'rgba(255,255,255,0.1)'),
+                                color: isExpanded ? 'var(--tg-primary)' : 'var(--tg-text-dim)',
+                                padding: '0.2rem 0.5rem',
+                                borderRadius: '4px',
+                                fontSize: '0.72rem',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease',
+                              }}
+                            >
+                              {isExpanded ? 'Hide Diff' : 'View Diff'}
+                            </button>
+                          )}
+                        </div>
+                        {isExpanded && f.diff && (
+                          <div className="tg-diff-viewer" style={{ maxHeight: '220px', overflowY: 'auto', marginTop: '0.3rem', fontSize: '0.73rem' }}>
+                            {f.diff.split('\n').map((line: string, idx: number) => {
+                              if (line.startsWith('+') && !line.startsWith('+++')) {
+                                return <div key={idx} className="tg-diff-line-add">{line}</div>;
+                              }
+                              if (line.startsWith('-') && !line.startsWith('---')) {
+                                return <div key={idx} className="tg-diff-line-del">{line}</div>;
+                              }
+                              return (
+                                <div key={idx} style={{ padding: '0.12rem 0.5rem', color: 'var(--tg-text-dim)', fontFamily: 'var(--tg-font-mono)' }}>
+                                  {line}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                   {!(intelligenceResult?.change_set?.files?.length || intelligenceResult?.change_set?.changed_files?.length) && (
                     <p style={{ color: 'var(--tg-text-dim)', fontSize: '0.83rem', margin: 0 }}>File list not available for this run.</p>
                   )}
@@ -473,32 +584,75 @@ export const TravelGuardConsole: React.FC<TravelGuardConsoleProps> = ({ onSwitch
 
             {/* ④ Test Recommendations */}
             {selectedTests.length > 0 && (
-              <div className="tg-grid-2">
-                {/* Selected */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                {/* Selected Tests Card */}
                 <div className="tg-card">
-                  <div className="tg-card-header">
-                    <span className="tg-card-title">
-                      <CheckCircle2 size={16} color="#10b981" />
-                      Tests to Run ({selectedTests.length})
-                    </span>
+                  <div className="tg-card-header" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                      <span className="tg-card-title">
+                        <CheckCircle2 size={16} color="#10b981" />
+                        Tests to Run ({filteredSelectedTests.length} of {selectedTests.length})
+                      </span>
+                      {/* Filter pills */}
+                      <div style={{ display: 'flex', gap: '0.35rem' }}>
+                        {[
+                          { key: 'ALL', label: `All (${selectedTests.length})` },
+                          { key: 'P0',  label: `P0 Critical (${p0Count})` },
+                          { key: 'P1',  label: `P1 Regression (${p1Count})` },
+                        ].map(f => (
+                          <button
+                            key={f.key}
+                            type="button"
+                            onClick={() => setPriorityFilter(f.key as any)}
+                            style={{
+                              background: priorityFilter === f.key ? 'rgba(56,189,248,0.2)' : 'rgba(255,255,255,0.04)',
+                              color: priorityFilter === f.key ? 'var(--tg-primary)' : 'var(--tg-text-dim)',
+                              border: '1px solid ' + (priorityFilter === f.key ? 'rgba(56,189,248,0.4)' : 'rgba(255,255,255,0.08)'),
+                              borderRadius: '9999px',
+                              padding: '0.2rem 0.6rem',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            {f.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {/* Copy Suite Button */}
+                    <button
+                      type="button"
+                      onClick={copyAllCmds}
+                      className="tg-btn-scenario"
+                      style={{ padding: '0.35rem 0.75rem', fontSize: '0.76rem', gap: '0.45rem' }}
+                      title="Copy consolidated Playwright CLI command to run all selected tests"
+                    >
+                      {copiedAll ? <><Check size={13} color="#10b981" /><span>Copied Test Suite!</span></> : <><Copy size={13} /><span>Copy All Test Commands</span></>}
+                    </button>
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-                    {selectedTests.map((t: any, i: number) => {
+
+                  {/* Test Cards Grid */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '0.75rem' }}>
+                    {filteredSelectedTests.map((t: any, i: number) => {
                       const cmd = getRunCommand(t.file || t.test_file || '');
                       return (
-                        <div key={i} style={{ background: 'var(--tg-surface-card)', padding: '0.7rem', borderRadius: '8px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-                            <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>{t.name || t.test_name}</span>
-                            <span className={`tg-pill ${t.priority === 'P0' ? 'tg-pill-p0' : t.priority === 'P1' ? 'tg-pill-p1' : 'tg-pill-p2'}`}>
-                              {t.priority}
-                            </span>
+                        <div key={i} style={{ background: 'var(--tg-surface-card)', padding: '0.8rem', borderRadius: '8px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '0.5rem' }}>
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
+                              <span style={{ fontWeight: 700, fontSize: '0.86rem' }}>{t.name || t.test_name}</span>
+                              <span className={`tg-pill ${t.priority === 'P0' ? 'tg-pill-p0' : t.priority === 'P1' ? 'tg-pill-p1' : 'tg-pill-p2'}`}>
+                                {t.priority}
+                              </span>
+                            </div>
+                            <code style={{ fontSize: '0.74rem', color: 'var(--tg-text-dim)' }}>{t.file || t.test_file}</code>
+                            <p style={{ fontSize: '0.78rem', color: 'var(--tg-text-muted)', margin: '0.4rem 0 0 0', lineHeight: 1.45 }}>{t.reason}</p>
                           </div>
-                          <code style={{ fontSize: '0.74rem', color: 'var(--tg-text-dim)' }}>{t.file || t.test_file}</code>
-                          <p style={{ fontSize: '0.78rem', color: 'var(--tg-text-muted)', margin: '0.3rem 0 0.45rem 0' }}>{t.reason}</p>
                           {cmd && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'rgba(0,0,0,0.3)', borderRadius: '5px', padding: '0.3rem 0.5rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'rgba(0,0,0,0.35)', borderRadius: '5px', padding: '0.35rem 0.55rem', marginTop: '0.25rem' }}>
                               <Terminal size={11} color="var(--tg-text-dim)" />
-                              <code style={{ flex: 1, fontSize: '0.72rem', color: 'var(--tg-cyan)' }}>{cmd}</code>
+                              <code style={{ flex: 1, fontSize: '0.72rem', color: 'var(--tg-cyan)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cmd}</code>
                               <button onClick={() => copyCmd(cmd)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tg-text-dim)', display: 'flex', padding: 0 }}>
                                 {copiedCmd === cmd ? <Check size={12} color="#10b981" /> : <Copy size={12} />}
                               </button>
@@ -510,26 +664,42 @@ export const TravelGuardConsole: React.FC<TravelGuardConsoleProps> = ({ onSwitch
                   </div>
                 </div>
 
-                {/* Skipped */}
-                <div className="tg-card">
-                  <div className="tg-card-header">
-                    <span className="tg-card-title">
-                      <XCircle size={16} color="var(--tg-text-dim)" />
-                      Skipped Tests ({skippedTests.length})
-                    </span>
+                {/* Safely Skipped Tests Drawer */}
+                <div className="tg-card" style={{ padding: '0.85rem 1.25rem' }}>
+                  <div
+                    onClick={() => setShowSkipped(!showSkipped)}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none' }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                      <XCircle size={15} color="var(--tg-text-dim)" />
+                      <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--tg-text-muted)' }}>
+                        Safely Skipped Tests ({skippedTests.length})
+                      </span>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--tg-text-dim)' }}>
+                        — Non-impacted test suites safely bypassed to optimize execution time
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: 'var(--tg-text-dim)', fontSize: '0.75rem' }}>
+                      <span>{showSkipped ? 'Hide' : 'Show'}</span>
+                      {showSkipped ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    {skippedTests.length === 0
-                      ? <p style={{ color: 'var(--tg-text-dim)', fontSize: '0.83rem', margin: 0 }}>All registered tests are relevant to this change.</p>
-                      : skippedTests.map((t: any, i: number) => (
-                        <div key={i} style={{ background: 'var(--tg-surface-card)', padding: '0.6rem 0.75rem', borderRadius: '8px', opacity: 0.75 }}>
-                          <div style={{ fontWeight: 600, fontSize: '0.83rem' }}>{t.name || t.test_name}</div>
-                          <code style={{ fontSize: '0.73rem', color: 'var(--tg-text-dim)' }}>{t.file || t.test_file}</code>
-                          <p style={{ fontSize: '0.76rem', color: 'var(--tg-text-muted)', margin: '0.2rem 0 0 0' }}>{t.reason}</p>
-                        </div>
-                      ))
-                    }
-                  </div>
+
+                  {showSkipped && (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '0.6rem', marginTop: '0.85rem', paddingTop: '0.85rem', borderTop: '1px solid var(--tg-border)' }}>
+                      {skippedTests.length === 0 ? (
+                        <p style={{ color: 'var(--tg-text-dim)', fontSize: '0.82rem', margin: 0 }}>All registered tests are relevant to this change.</p>
+                      ) : (
+                        skippedTests.map((t: any, i: number) => (
+                          <div key={i} style={{ background: 'var(--tg-surface-card)', padding: '0.6rem 0.75rem', borderRadius: '6px', opacity: 0.8 }}>
+                            <div style={{ fontWeight: 600, fontSize: '0.82rem' }}>{t.name || t.test_name}</div>
+                            <code style={{ fontSize: '0.72rem', color: 'var(--tg-text-dim)' }}>{t.file || t.test_file}</code>
+                            <p style={{ fontSize: '0.75rem', color: 'var(--tg-text-muted)', margin: '0.25rem 0 0 0' }}>{t.reason}</p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
