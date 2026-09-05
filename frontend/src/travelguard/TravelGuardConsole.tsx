@@ -69,6 +69,15 @@ export const TravelGuardConsole: React.FC<TravelGuardConsoleProps> = ({ onSwitch
   const [expandedDiffs, setExpandedDiffs] = useState<Record<string, boolean>>({});
   const [showSkipped, setShowSkipped] = useState<boolean>(false);
 
+  // Live test execution state
+  const [testExecutionResults, setTestExecutionResults] = useState<
+    Record<string, { status: 'passed' | 'failed' | 'running'; duration_ms?: number; error?: string; stdout?: string }>
+  >({});
+  const [runningSingleTestKey, setRunningSingleTestKey] = useState<string | null>(null);
+  const [isRunningAllTests, setIsRunningAllTests] = useState<boolean>(false);
+  const [runningTestProgress, setRunningTestProgress] = useState<string>('');
+  const [isRunningStages4to7, setIsRunningStages4to7] = useState<boolean>(false);
+
   const toggleDiff = (path: string) => {
     setExpandedDiffs(prev => ({ ...prev, [path]: !prev[path] }));
   };
@@ -94,6 +103,7 @@ export const TravelGuardConsole: React.FC<TravelGuardConsoleProps> = ({ onSwitch
     setAutonomousResult(null);
     setIntelligenceResult(null);
     setErrorMsg('');
+    setTestExecutionResults({});
   };
 
   const runAnalyze = async (scenarioKey: string | null) => {
@@ -120,10 +130,15 @@ export const TravelGuardConsole: React.FC<TravelGuardConsoleProps> = ({ onSwitch
     }
   };
 
-  const runAutonomous = async (scenarioKey: string) => {
+  const runAutonomous = async (scenarioKey: string | null) => {
     resetResults();
     setIsRunning(true);
-    setRunStatusMsg('Executing tests, diagnosing failures & checking release gate...');
+    setIsRunningStages4to7(true);
+    setRunStatusMsg(
+      scenarioKey
+        ? 'Executing tests, diagnosing failures & checking release gate...'
+        : 'Executing selected Playwright tests against local working tree & enforcing release gate...'
+    );
     try {
       const res = await fetch('/api/travelguard/run', {
         method: 'POST',
@@ -131,11 +146,29 @@ export const TravelGuardConsole: React.FC<TravelGuardConsoleProps> = ({ onSwitch
         body: JSON.stringify({ scenario: scenarioKey, mock_llm: mockLlm }),
       });
       if (!res.ok) throw new Error((await res.json()).detail || 'Autonomous run failed');
-      setAutonomousResult(await res.json());
+      const data: AutonomousRunResult = await res.json();
+      setAutonomousResult(data);
+
+      // Populate testExecutionResults from autonomous run
+      if (data.execution_results && Array.isArray(data.execution_results)) {
+        const resultsMap: Record<string, any> = {};
+        for (const er of data.execution_results) {
+          const keys = [er.test_id, er.test_file, er.test_name].filter(Boolean);
+          const mapped = {
+            status: er.status,
+            duration_ms: er.duration_ms,
+            error: er.failure?.error_message || (er.status === 'failed' ? (er.stderr || er.stdout || 'Test failed') : undefined),
+            stdout: er.stdout,
+          };
+          keys.forEach(k => { resultsMap[k] = mapped; });
+        }
+        setTestExecutionResults(prev => ({ ...prev, ...resultsMap }));
+      }
     } catch (e: any) {
       setErrorMsg(e.message || 'An error occurred during autonomous run');
     } finally {
       setIsRunning(false);
+      setIsRunningStages4to7(false);
       setRunStatusMsg('');
     }
   };
@@ -145,9 +178,68 @@ export const TravelGuardConsole: React.FC<TravelGuardConsoleProps> = ({ onSwitch
     runAnalyze(null);
   };
 
+  const handleRunStages4to7 = () => {
+    setSelectedScenario(null);
+    runAutonomous(null);
+  };
+
   const handleScenario = (key: string) => {
     setSelectedScenario(key);
     key === 'scenario_d' ? runAnalyze(key) : runAutonomous(key);
+  };
+
+  const handleRunSingleTest = async (t: any) => {
+    const testKey = t.test_id || t.id || t.file || t.test_file || t.name;
+    const testFile = t.file || t.test_file;
+    const testId = t.test_id || t.id || 'test';
+    const testName = t.name || t.test_name || 'Test';
+
+    setRunningSingleTestKey(testKey);
+    setTestExecutionResults(prev => ({
+      ...prev,
+      [testKey]: { status: 'running' },
+      [testFile]: { status: 'running' },
+      [testId]: { status: 'running' },
+    }));
+
+    try {
+      const res = await fetch('/api/travelguard/test-single', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          test_file: testFile,
+          test_id: testId,
+          test_name: testName,
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json()).detail || 'Test execution failed');
+      const data = await res.json();
+      const mapped = {
+        status: data.status,
+        duration_ms: data.duration_ms,
+        error: data.failure?.error_message || (data.status === 'failed' ? (data.stderr || data.stdout || 'Test failed') : undefined),
+        stdout: data.stdout,
+      };
+      setTestExecutionResults(prev => ({
+        ...prev,
+        [testKey]: mapped,
+        [testFile]: mapped,
+        [testId]: mapped,
+      }));
+    } catch (err: any) {
+      const mapped = {
+        status: 'failed' as const,
+        error: err.message || 'Execution error',
+      };
+      setTestExecutionResults(prev => ({
+        ...prev,
+        [testKey]: mapped,
+        [testFile]: mapped,
+        [testId]: mapped,
+      }));
+    } finally {
+      setRunningSingleTestKey(null);
+    }
   };
 
   const copyCmd = (cmd: string) => {
@@ -166,7 +258,7 @@ export const TravelGuardConsole: React.FC<TravelGuardConsoleProps> = ({ onSwitch
 
   /* ── Derived values ────────────────────────────────────────────────────── */
   const hasResult   = !!(autonomousResult || intelligenceResult);
-  const impact      = intelligenceResult?.impact;
+  const impact      = intelligenceResult?.impact || autonomousResult?.impact;
   const qr          = autonomousResult?.quality_report;
   const riskLevel   = impact?.risk?.level || impact?.ai_risk_level || (qr?.quality_gate_passed ? 'LOW' : qr ? 'HIGH' : '');
   const riskScore   = impact?.risk?.score ?? impact?.ai_risk_score;
@@ -195,6 +287,18 @@ export const TravelGuardConsole: React.FC<TravelGuardConsoleProps> = ({ onSwitch
   const p0Count = selectedTests.filter((t: any) => t.priority === 'P0').length;
   const p1Count = selectedTests.filter((t: any) => t.priority === 'P1').length;
 
+  const handleRunAllTests = async () => {
+    if (!selectedTests.length) return;
+    setIsRunningAllTests(true);
+    for (let i = 0; i < selectedTests.length; i++) {
+      const t = selectedTests[i];
+      setRunningTestProgress(`${i + 1}/${selectedTests.length}`);
+      await handleRunSingleTest(t);
+    }
+    setIsRunningAllTests(false);
+    setRunningTestProgress('');
+  };
+
   const copyAllCmds = () => {
     const specs = selectedTests
       .map((t: any) => (t.file || t.test_file || '').replace(/^tests\//, ''))
@@ -219,11 +323,29 @@ export const TravelGuardConsole: React.FC<TravelGuardConsoleProps> = ({ onSwitch
 
   const getStepClass = (i: number): string => {
     if (!isRunning && !hasResult) return '';
-    if (isRunning) return 'active';
+    if (isRunning) {
+      if (isRunningStages4to7) {
+        if (i <= 2) return 'done';
+        if (i === 3) return 'active';
+        return '';
+      }
+      return 'active';
+    }
     // result is present
     if (i <= 2) return 'done'; // change detect, journey, test selection always done
-    if (!autonomousResult) return ''; // analyze-only: stages 4–7 not run
+    if (!autonomousResult) {
+      const ranCount = Object.keys(testExecutionResults).length;
+      if (ranCount > 0 && i === 3) {
+        const anyFailed = Object.values(testExecutionResults).some(r => r.status === 'failed');
+        return anyFailed ? 'blocked' : 'done';
+      }
+      return ''; // analyze-only: stages 4–7 not run
+    }
     // autonomous run: all 7 stages ran
+    if (i === 3) {
+      const hasFailures = (autonomousResult.execution_results || []).some(r => r.status === 'failed');
+      return hasFailures ? 'blocked' : 'done';
+    }
     if (i === 4) {
       const cls = autonomousResult?.diagnosis_results?.[0]?.classification;
       return cls === 'PRODUCT_DEFECT' || cls === 'ENVIRONMENT_FAILURE' ? 'blocked' : 'done';
@@ -330,12 +452,33 @@ export const TravelGuardConsole: React.FC<TravelGuardConsoleProps> = ({ onSwitch
 
           {/* Stepper helper line */}
           {!isRunning && !autonomousResult && intelligenceResult && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.35rem 0.25rem 0 0.25rem', fontSize: '0.74rem', color: 'var(--tg-text-dim)', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.45rem 0.25rem 0 0.25rem', fontSize: '0.76rem', color: 'var(--tg-text-dim)', flexWrap: 'wrap', gap: '0.6rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
                 <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: 'var(--tg-emerald)', display: 'inline-block', boxShadow: '0 0 6px var(--tg-emerald)' }} />
-                <span><strong style={{ color: 'var(--tg-text-muted)' }}>Pre-Commit Intelligence Active:</strong> Stages 1–3 Complete (Impact Analysis & Test Selection).</span>
+                <span><strong style={{ color: 'var(--tg-text-muted)' }}>Pre-Commit Intelligence Ready:</strong> Stages 1–3 Complete (Impact Analysis & Test Selection).</span>
               </div>
-              <span style={{ color: 'var(--tg-text-dim)', fontStyle: 'italic' }}>Stages 4–7 execute during full autonomous test run or CI quality gate.</span>
+              <button
+                type="button"
+                onClick={handleRunStages4to7}
+                disabled={isRunning}
+                style={{
+                  background: 'rgba(56,189,248,0.15)',
+                  border: '1px solid rgba(56,189,248,0.35)',
+                  color: 'var(--tg-primary)',
+                  borderRadius: '6px',
+                  padding: '0.3rem 0.75rem',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  cursor: isRunning ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <Play size={12} fill="currentColor" />
+                <span>Proceed to Stages 4–7 (Execution & Release Gate)</span>
+              </button>
             </div>
           )}
         </div>
@@ -407,6 +550,49 @@ export const TravelGuardConsole: React.FC<TravelGuardConsoleProps> = ({ onSwitch
                   </div>
                 </>}
               </div>
+
+              {/* Next-Step Action Banner when pre-commit check (Stages 1-3) is done */}
+              {!autonomousResult && intelligenceResult && (
+                <div style={{
+                  gridColumn: '1 / -1',
+                  marginTop: '0.85rem',
+                  paddingTop: '0.85rem',
+                  borderTop: '1px solid rgba(255,255,255,0.1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '0.75rem',
+                }}>
+                  <div style={{ fontSize: '0.83rem', color: 'var(--tg-text-muted)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#38bdf8', boxShadow: '0 0 8px #38bdf8' }} />
+                    <span>Run the recommended test suite and enforce the release gate before pushing code.</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRunStages4to7}
+                    disabled={isRunning}
+                    style={{
+                      background: 'linear-gradient(135deg, #0284c7, #10b981)',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '0.55rem 1.25rem',
+                      fontSize: '0.85rem',
+                      fontWeight: 700,
+                      cursor: isRunning ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      boxShadow: '0 0 16px rgba(2, 132, 199, 0.4)',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <Play size={14} fill="currentColor" />
+                    <span>Execute Tests & Enforce Release Gate (Stages 4–7)</span>
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* ② Risk Assessment + Changed Files */}
@@ -486,12 +672,12 @@ export const TravelGuardConsole: React.FC<TravelGuardConsoleProps> = ({ onSwitch
                   <span className="tg-card-title">
                     <FileCode2 size={16} color="#06b6d4" />
                     Changed Files
-                    {(intelligenceResult?.change_set?.files?.length ?? intelligenceResult?.change_set?.changed_files?.length) !== undefined &&
-                      ` (${(intelligenceResult?.change_set?.files || intelligenceResult?.change_set?.changed_files || []).length})`}
+                    {(intelligenceResult?.change_set?.files || intelligenceResult?.change_set?.changed_files || autonomousResult?.change_set?.files || autonomousResult?.change_set?.changed_files) &&
+                      ` (${(intelligenceResult?.change_set?.files || intelligenceResult?.change_set?.changed_files || autonomousResult?.change_set?.files || autonomousResult?.change_set?.changed_files || []).length})`}
                   </span>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-                  {(intelligenceResult?.change_set?.files || intelligenceResult?.change_set?.changed_files || []).map((f: any, i: number) => {
+                  {(intelligenceResult?.change_set?.files || intelligenceResult?.change_set?.changed_files || autonomousResult?.change_set?.files || autonomousResult?.change_set?.changed_files || []).map((f: any, i: number) => {
                     const filePath = f.path || f.file_path;
                     const isExpanded = !!expandedDiffs[filePath];
                     return (
@@ -547,7 +733,7 @@ export const TravelGuardConsole: React.FC<TravelGuardConsoleProps> = ({ onSwitch
                       </div>
                     );
                   })}
-                  {!(intelligenceResult?.change_set?.files?.length || intelligenceResult?.change_set?.changed_files?.length) && (
+                  {!(intelligenceResult?.change_set?.files || intelligenceResult?.change_set?.changed_files || autonomousResult?.change_set?.files || autonomousResult?.change_set?.changed_files) && (
                     <p style={{ color: 'var(--tg-text-dim)', fontSize: '0.83rem', margin: 0 }}>File list not available for this run.</p>
                   )}
                 </div>
@@ -621,39 +807,136 @@ export const TravelGuardConsole: React.FC<TravelGuardConsoleProps> = ({ onSwitch
                         ))}
                       </div>
                     </div>
-                    {/* Copy Suite Button */}
-                    <button
-                      type="button"
-                      onClick={copyAllCmds}
-                      className="tg-btn-scenario"
-                      style={{ padding: '0.35rem 0.75rem', fontSize: '0.76rem', gap: '0.45rem' }}
-                      title="Copy consolidated Playwright CLI command to run all selected tests"
-                    >
-                      {copiedAll ? <><Check size={13} color="#10b981" /><span>Copied Test Suite!</span></> : <><Copy size={13} /><span>Copy All Test Commands</span></>}
-                    </button>
+
+                    {/* Suite Actions: Run in Console + Copy */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        onClick={handleRunAllTests}
+                        disabled={isRunning || isRunningAllTests}
+                        style={{
+                          background: 'linear-gradient(135deg, #0284c7, #06b6d4)',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: '8px',
+                          padding: '0.4rem 0.85rem',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          cursor: isRunning || isRunningAllTests ? 'not-allowed' : 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.45rem',
+                          boxShadow: '0 0 12px rgba(6, 182, 212, 0.35)',
+                          transition: 'all 0.15s ease',
+                        }}
+                        title="Run all selected tests sequentially in console"
+                      >
+                        {isRunningAllTests ? (
+                          <><RotateCcw size={12} className="spin-animate" /><span>Running ({runningTestProgress})...</span></>
+                        ) : (
+                          <><Play size={12} fill="currentColor" /><span>Run Selected Tests</span></>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={copyAllCmds}
+                        className="tg-btn-scenario"
+                        style={{ padding: '0.35rem 0.75rem', fontSize: '0.76rem', gap: '0.45rem' }}
+                        title="Copy consolidated Playwright CLI command to run all selected tests"
+                      >
+                        {copiedAll ? <><Check size={13} color="#10b981" /><span>Copied Test Suite!</span></> : <><Copy size={13} /><span>Copy All Test Commands</span></>}
+                      </button>
+                    </div>
                   </div>
 
                   {/* Test Cards Grid */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '0.75rem' }}>
                     {filteredSelectedTests.map((t: any, i: number) => {
-                      const cmd = getRunCommand(t.file || t.test_file || '');
+                      const testKey = t.test_id || t.id || t.file || t.test_file || t.name;
+                      const testFile = t.file || t.test_file || '';
+                      const testId = t.test_id || t.id || '';
+                      const execRes = testExecutionResults[testKey] || testExecutionResults[testFile] || testExecutionResults[testId];
+                      const cmd = getRunCommand(testFile);
+                      const isSingleRunning = runningSingleTestKey === testKey || runningSingleTestKey === testFile || runningSingleTestKey === testId;
+
                       return (
-                        <div key={i} style={{ background: 'var(--tg-surface-card)', padding: '0.8rem', borderRadius: '8px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '0.5rem' }}>
+                        <div key={i} style={{
+                          background: 'var(--tg-surface-card)',
+                          padding: '0.85rem',
+                          borderRadius: '8px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between',
+                          gap: '0.5rem',
+                          border: execRes?.status === 'passed' ? '1px solid rgba(16,185,129,0.4)' : execRes?.status === 'failed' ? '1px solid rgba(244,63,94,0.4)' : '1px solid var(--tg-border)',
+                          boxShadow: execRes?.status === 'passed' ? '0 0 12px rgba(16,185,129,0.1)' : execRes?.status === 'failed' ? '0 0 12px rgba(244,63,94,0.1)' : 'none',
+                          transition: 'all 0.2s ease',
+                        }}>
                           <div>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
-                              <span style={{ fontWeight: 700, fontSize: '0.86rem' }}>{t.name || t.test_name}</span>
-                              <span className={`tg-pill ${t.priority === 'P0' ? 'tg-pill-p0' : t.priority === 'P1' ? 'tg-pill-p1' : 'tg-pill-p2'}`}>
-                                {t.priority}
-                              </span>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem', gap: '0.5rem', flexWrap: 'wrap' }}>
+                              <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{t.name || t.test_name}</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                {execRes?.status === 'passed' && (
+                                  <span className="tg-pill" style={{ background: 'rgba(16,185,129,0.18)', color: '#34d399', border: '1px solid rgba(16,185,129,0.4)', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.7rem', padding: '0.15rem 0.5rem', fontWeight: 700 }}>
+                                    <CheckCircle2 size={11} />
+                                    <span>PASSED {execRes.duration_ms ? `(${(execRes.duration_ms / 1000).toFixed(1)}s)` : ''}</span>
+                                  </span>
+                                )}
+                                {execRes?.status === 'failed' && (
+                                  <span className="tg-pill" style={{ background: 'rgba(244,63,94,0.18)', color: '#fb7185', border: '1px solid rgba(244,63,94,0.4)', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.7rem', padding: '0.15rem 0.5rem', fontWeight: 700 }}>
+                                    <XCircle size={11} />
+                                    <span>FAILED</span>
+                                  </span>
+                                )}
+                                {execRes?.status === 'running' && (
+                                  <span className="tg-pill" style={{ background: 'rgba(56,189,248,0.18)', color: '#38bdf8', border: '1px solid rgba(56,189,248,0.4)', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.7rem', padding: '0.15rem 0.5rem', fontWeight: 700 }}>
+                                    <RotateCcw size={11} className="spin-animate" />
+                                    <span>RUNNING</span>
+                                  </span>
+                                )}
+                                <span className={`tg-pill ${t.priority === 'P0' ? 'tg-pill-p0' : t.priority === 'P1' ? 'tg-pill-p1' : 'tg-pill-p2'}`}>
+                                  {t.priority}
+                                </span>
+                              </div>
                             </div>
-                            <code style={{ fontSize: '0.74rem', color: 'var(--tg-text-dim)' }}>{t.file || t.test_file}</code>
+                            <code style={{ fontSize: '0.74rem', color: 'var(--tg-text-dim)' }}>{testFile}</code>
                             <p style={{ fontSize: '0.78rem', color: 'var(--tg-text-muted)', margin: '0.4rem 0 0 0', lineHeight: 1.45 }}>{t.reason}</p>
+                            {execRes?.error && (
+                              <div style={{ background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.25)', borderRadius: '5px', padding: '0.4rem 0.6rem', fontSize: '0.73rem', color: '#fca5a5', marginTop: '0.45rem', fontFamily: 'var(--tg-font-mono)', maxHeight: '110px', overflowY: 'auto' }}>
+                                {execRes.error}
+                              </div>
+                            )}
                           </div>
                           {cmd && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'rgba(0,0,0,0.35)', borderRadius: '5px', padding: '0.35rem 0.55rem', marginTop: '0.25rem' }}>
                               <Terminal size={11} color="var(--tg-text-dim)" />
                               <code style={{ flex: 1, fontSize: '0.72rem', color: 'var(--tg-cyan)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cmd}</code>
-                              <button onClick={() => copyCmd(cmd)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tg-text-dim)', display: 'flex', padding: 0 }}>
+                              <button
+                                type="button"
+                                onClick={() => handleRunSingleTest(t)}
+                                disabled={isRunning || isRunningAllTests || isSingleRunning}
+                                style={{
+                                  background: isSingleRunning ? 'rgba(56,189,248,0.25)' : 'rgba(56,189,248,0.12)',
+                                  border: '1px solid rgba(56,189,248,0.35)',
+                                  borderRadius: '4px',
+                                  color: '#38bdf8',
+                                  fontSize: '0.7rem',
+                                  fontWeight: 700,
+                                  padding: '0.2rem 0.55rem',
+                                  cursor: isRunning || isRunningAllTests || isSingleRunning ? 'not-allowed' : 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.3rem',
+                                  whiteSpace: 'nowrap',
+                                  transition: 'all 0.15s ease',
+                                }}
+                                title="Run this single test in console"
+                              >
+                                {isSingleRunning ? <RotateCcw size={10} className="spin-animate" /> : <Play size={10} fill="currentColor" />}
+                                <span>{isSingleRunning ? 'Running' : 'Run'}</span>
+                              </button>
+                              <button onClick={() => copyCmd(cmd)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tg-text-dim)', display: 'flex', padding: 0 }} title="Copy test command">
                                 {copiedCmd === cmd ? <Check size={12} color="#10b981" /> : <Copy size={12} />}
                               </button>
                             </div>

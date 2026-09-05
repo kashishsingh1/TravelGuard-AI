@@ -15,6 +15,7 @@ from travelguard.demo import (
     create_demo_selected_tests,
     load_scenario_diff,
 )
+from travelguard.execution_engine import TestExecutionEngine
 from travelguard.pipeline import TestIntelligencePipeline
 from travelguard.registry import get_journey_registry
 from travelguard.test_inventory import get_test_inventory
@@ -31,6 +32,23 @@ class RunRequest(BaseModel):
 class AnalyzeRequest(BaseModel):
     scenario: Optional[str] = None
     mock_llm: bool = True
+
+
+class SingleTestRequest(BaseModel):
+    test_file: str
+    test_id: str
+    test_name: str
+
+
+@router.post("/test-single")
+def run_single_test(req: SingleTestRequest):
+    """Execute a single test file from the developer console."""
+    engine = TestExecutionEngine()
+    try:
+        res = engine.execute_single_file(req.test_file, req.test_id, req.test_name)
+        return res.model_dump()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Test execution error: {str(exc)}")
 
 
 @router.get("/config")
@@ -99,7 +117,8 @@ async def run_autonomous(request: RunRequest):
             raise HTTPException(status_code=500, detail=f"Autonomous pipeline error: {str(exc)}")
 
     res_dict = result.model_dump()
-    res_dict["raw_diff"] = diff_text
+    res_dict["change_set"] = change_set.model_dump()
+    res_dict["raw_diff"] = change_set.raw_diff if not scenario_key else diff_text
     return res_dict
 
 

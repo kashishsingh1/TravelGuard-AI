@@ -42,6 +42,7 @@ Pipeline flow:
                            PASS / FAIL
 """
 
+import asyncio
 import json
 import logging
 import sys
@@ -292,7 +293,7 @@ class AutonomousQAEngine:
                 f"{len(implicit_passes)} implicit passes for {len(selected_tests)} selected"
             )
         else:
-            execution_results = self._executor_svc().execute(selected_tests)
+            execution_results = await asyncio.to_thread(self._executor_svc().execute, selected_tests)
 
         passed_results = [r for r in execution_results if r.status == "passed"]
         failed_results = [r for r in execution_results if r.status != "passed"]

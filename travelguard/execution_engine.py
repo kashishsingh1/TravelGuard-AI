@@ -76,13 +76,17 @@ class TestExecutionEngine:
         """
         json_out_file = self.artifacts_dir / "runs" / f"pw_result_{int(time.time() * 1000)}.json"
 
+        config_path = self.tests_dir / "playwright.config.ts"
         cmd = [
             "npx", "playwright", "test", rel_test_file,
-            "--reporter", f"json:{json_out_file}",
-            "--reporter", "list",
+            "--config", str(config_path),
+            "--reporter=json,list",
         ]
 
         env = dict(os.environ)
+        env.setdefault("PLAYWRIGHT_BASE_URL", "http://localhost:5173")
+        env.setdefault("BACKEND_URL", "http://localhost:8000")
+        env["PLAYWRIGHT_JSON_OUTPUT_NAME"] = str(json_out_file)
         if extra_env:
             env.update(extra_env)
 
@@ -93,7 +97,7 @@ class TestExecutionEngine:
                 cwd=str(self.tests_dir),
                 capture_output=True,
                 text=True,
-                timeout=self.timeout_seconds,
+                timeout=min(self.timeout_seconds, 35),
                 shell=(sys.platform == "win32"),
                 env=env,
             )

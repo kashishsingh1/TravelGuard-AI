@@ -117,6 +117,7 @@ export interface AutonomousRunResult {
   };
   quality_gate_decision?: QualityGateDecision;
   raw_diff?: string;
+  change_set?: any;
 }
 
 export interface GeneratedTest {
