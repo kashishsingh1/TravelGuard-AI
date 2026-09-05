@@ -9,6 +9,7 @@ import logging
 import os
 import re
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -93,6 +94,7 @@ class TestExecutionEngine:
                 capture_output=True,
                 text=True,
                 timeout=self.timeout_seconds,
+                shell=(sys.platform == "win32"),
                 env=env,
             )
             stdout = proc.stdout or ""
@@ -114,6 +116,9 @@ class TestExecutionEngine:
         except FileNotFoundError:
             logger.error("[ExecutionEngine] npx/playwright not found — check environment setup")
             return -2, "", "playwright/npx not found: ENVIRONMENT_FAILURE", {}
+        except OSError as e:
+            logger.error(f"[ExecutionEngine] OS error running playwright: {e}")
+            return -2, "", f"OS error: {e}: ENVIRONMENT_FAILURE", {}
 
     def _flatten_specs(self, suites: list) -> list:
         """Recursively flatten nested Playwright suite structure into individual spec items."""
@@ -266,9 +271,9 @@ class TestExecutionEngine:
             # Playwright is run from within tests/ — strip the "tests/" prefix
             rel_file = Path(test_file)
             if rel_file.parts and rel_file.parts[0] == "tests":
-                rel_for_playwright = str(Path(*rel_file.parts[1:]))
+                rel_for_playwright = "/".join(rel_file.parts[1:])
             else:
-                rel_for_playwright = str(rel_file)
+                rel_for_playwright = "/".join(rel_file.parts)
 
             start_ts = time.monotonic()
             exit_code, stdout, stderr, json_report = self._run_playwright(

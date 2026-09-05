@@ -65,8 +65,57 @@ async def test_demo_scenario_d_promo_code():
 
 
 def test_demo_scenarios_registry_completeness():
-    """Verify all 4 required hackathon scenarios exist in registry."""
+    """Verify all required hackathon scenarios exist in registry."""
     assert "scenario_a" in DEMO_SCENARIOS
     assert "scenario_b" in DEMO_SCENARIOS
     assert "scenario_c" in DEMO_SCENARIOS
     assert "scenario_d" in DEMO_SCENARIOS
+    assert "booking-ui-drift" in DEMO_SCENARIOS
+    assert "booking-api-defect" in DEMO_SCENARIOS
+    assert "environment-failure" in DEMO_SCENARIOS
+
+
+def test_create_demo_selected_tests():
+    """Verify create_demo_selected_tests returns appropriate tests for each scenario."""
+    from travelguard.demo import create_demo_selected_tests
+
+    # UI drift should select booking drift test
+    drift_tests = create_demo_selected_tests("booking-ui-drift")
+    assert len(drift_tests) == 1
+    assert drift_tests[0].test_id == "booking-drift"
+
+    # API defect should select booking API test + booking E2E
+    defect_tests = create_demo_selected_tests("booking-api-defect")
+    assert len(defect_tests) == 2
+    assert any(t.test_id == "booking-api" for t in defect_tests)
+    assert any(t.test_id == "flight-booking" for t in defect_tests)
+
+    # Environment failure should select booking API test
+    env_tests = create_demo_selected_tests("environment-failure")
+    assert len(env_tests) == 1
+    assert env_tests[0].test_id == "booking-api"
+
+    # Default fallback for unknown scenario
+    default_tests = create_demo_selected_tests("unknown_scenario")
+    assert default_tests is None
+
+
+def test_create_demo_execution_results():
+    """Verify create_demo_execution_results returns simulated failure results for each scenario."""
+    from travelguard.demo import create_demo_execution_results
+
+    drift_results = create_demo_execution_results("booking-ui-drift")
+    assert len(drift_results) == 1
+    assert drift_results[0].status == "failed"
+    assert "Reserve Flight" in drift_results[0].failure.error_message or "Book Flight" in drift_results[0].failure.error_message
+
+    defect_results = create_demo_execution_results("booking-api-defect")
+    assert len(defect_results) == 1
+    assert defect_results[0].status == "failed"
+    assert "500" in defect_results[0].failure.error_message
+
+    env_results = create_demo_execution_results("environment-failure")
+    assert len(env_results) == 1
+    assert env_results[0].status == "failed"
+    assert "ECONNREFUSED" in env_results[0].failure.error_message
+

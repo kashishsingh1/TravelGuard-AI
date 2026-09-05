@@ -1,22 +1,22 @@
 # TravelGuard AI — Autonomous QA Platform
-## Increment 4: Autonomous Test Execution, Failure Diagnosis & Self-Healing
 
 ---
 
 ### 1. What TravelGuard AI Is
-**TravelGuard AI** is an **Autonomous Quality Engineer for the AI Development Era**. It bridges the gap between code-level commits, runtime browser execution, failure diagnosis, and verified self-healing:
+**TravelGuard AI** is an **Autonomous Quality Engineer for the AI Development Era**. It bridges the gap between code-level commits, runtime browser execution, failure diagnosis, verified self-healing, and enterprise release gating:
 - Detects what changed across the repository (working tree, git commit ranges, or CI PR diffs).
 - Translates file changes into affected **Business User Journeys** (Flight Search, Flight Selection, Passenger Details, Flight Booking & Confirmation).
-- Employs a resilient 3-tier LLM hierarchy (**Groq** primary $\to$ **OpenRouter** fallback 1 $\to$ **Gemini** fallback 2).
+- Employs a resilient 3-tier LLM hierarchy (**Groq** primary $\to$ **OpenRouter** fallback 1 $\to$ **Gemini** fallback 2) with zero secret leakage via the **Secret Scrubber**.
 - Computes a transparent, explainable **Risk Score (0–100)** and risk tier (**LOW, MEDIUM, HIGH, CRITICAL**).
 - Maintains a machine-readable **Test Inventory** (`travelguard/test_inventory.yaml`).
 - **Intelligently selects** tests into prioritized tiers (**P0, P1, P2**) with transparent accounting of skipped tests.
 - Detects **Coverage Gaps** and **generates candidate Playwright tests** (`tests/generated/`) with static QA validation.
-- **Autonomously executes tests** using Playwright / Pytest subprocess runners.
-- Inspects runtime DOM and element accessibility via **MCP Browser Inspector**.
+- **Autonomously executes tests** using Playwright / Pytest runners with real-time browser inspection via a genuine **Model Context Protocol (MCP)** server.
 - Accurately diagnoses failures into **`TEST_DRIFT`**, **`PRODUCT_DEFECT`**, or **`ENVIRONMENT_FAILURE`**.
-- **Self-heals** stale locators safely (backup created, confidence gated >= 0.70, re-validated) while strictly refusing to heal real product bugs.
-- Generates executive **Quality Reports** (JSON & Markdown) with overall quality status.
+- **Self-heals** brittle locators safely (backup created, confidence gated >= 0.70, re-validated) while strictly refusing to heal real product bugs.
+- Mathematically quantifies **Release Confidence (0–100%)** with an explicit audit formula and discount accounting.
+- Enforces deterministic **CI/CD Quality Gates** with standardized exit codes (`0` = Pass, `2` = Defect, `3` = Env Failure, `4` = Unknown).
+- Emits **Prometheus Metrics** (`/api/metrics`) and **OpenTelemetry Traces** with a ready-to-use Grafana dashboard.
 
 ---
 
@@ -120,67 +120,59 @@ python -m travelguard test-inventory
 
 ```
 TravelGuard-AI/
-├── travelguard/                  # TravelGuard Intelligence Core (INCREMENT 3)
-│   ├── __init__.py               # Package version (v0.3.0)
+├── .github/
+│   └── workflows/
+│       └── qa.yml                # CI/CD workflow with autonomous QA quality gate
+├── travelguard/                  # TravelGuard Intelligence Core (INCREMENT 5)
+│   ├── __init__.py               # Package version (v0.5.0)
 │   ├── __main__.py               # CLI runner entrypoint
 │   ├── analyzer.py               # AI change analyzer with JSON validation & LLM routing
+│   ├── autonomous_pipeline.py    # End-to-end autonomous QA engine & orchestrator
 │   ├── change_detector.py        # Git working tree, commit diff & fixture change detection
 │   ├── cli.py                    # Rich terminal report formatter & CLI parser
 │   ├── coverage_analyzer.py      # Coverage gap detection engine
-│   ├── demo.py                   # Deterministic hackathon demo runner (Scenarios A-D)
+│   ├── demo.py                   # Deterministic hackathon demo runner & SUT synchronization
+│   ├── diagnosis_engine.py       # Failure diagnosis: TEST_DRIFT vs PRODUCT_DEFECT vs ENV
+│   ├── execution_engine.py       # Dual-mode Playwright/Pytest test runner
+│   ├── healing_engine.py         # Confidence-gated self-healing engine (safe backups & patch)
 │   ├── journey_mapper.py         # Deterministic journey & capability mapping
 │   ├── journeys.yaml             # Machine-readable Business Journey Registry
-│   ├── models.py                 # Pydantic schemas (ChangeSet, TestIntelligenceResult, etc.)
+│   ├── mcp_inspector.py          # MCP client interface for real-time DOM queries
+│   ├── mcp_server.py             # Genuine Playwright MCP server (JSON-RPC 2.0 stdio)
+│   ├── models.py                 # Pydantic data schemas
+│   ├── observability.py          # OpenTelemetry tracing & Prometheus metrics definitions
 │   ├── pipeline.py               # Test Intelligence Pipeline orchestrator
+│   ├── quality_gate.py           # Deterministic CI/CD release gate & standard exit codes
 │   ├── recommender.py            # Targeted test recommendation engine
 │   ├── registry.py               # Journey registry loader
+│   ├── release_confidence.py     # Mathematical release confidence scoring engine
 │   ├── risk_engine.py            # Transparent risk scoring engine (0-100)
+│   ├── security.py               # Secret scrubber redacting credentials before LLM dispatch
 │   ├── test_generator.py         # Grounded Playwright test generator
 │   ├── test_inventory.py         # Test inventory registry loader
 │   ├── test_inventory.yaml       # Machine-readable test catalog
 │   ├── test_selector.py          # Deterministic & LLM-based P0/P1/P2 test selector
 │   ├── test_validator.py         # Multi-point static Playwright test validator
 │   ├── fixtures/                 # Predefined diff fixtures for deterministic demos
-│   │   ├── scenario_a_cosmetic_ui.diff
-│   │   ├── scenario_b_booking_ui.diff
-│   │   ├── scenario_c_booking_api.diff
-│   │   └── scenario_d_promo_code.diff
-│   └── tests/                    # 36 automated unit tests
+│   └── tests/                    # Comprehensive automated unit & integration tests
+├── observability/
+│   └── grafana/
+│       └── dashboard.json        # Pre-configured Grafana QA dashboard
 ├── frontend/                     # SkyBook React + TypeScript + Vite SUT
-│   ├── src/
-│   │   ├── components/           # Header, SearchForm, FlightResults, PassengerForm, Confirmation
-│   │   ├── services/api.ts       # Typed client for FastAPI endpoints
-│   │   ├── types/index.ts        # Shared TypeScript data models
-│   │   ├── index.css             # Modern design system & styling
-│   │   ├── App.tsx               # 5-step booking state management
-│   │   └── main.tsx              # Application entrypoint
-│   └── package.json
 ├── backend/                      # Python FastAPI Backend
 │   ├── app/
-│   │   ├── api/                  # /api/health, /api/flights, /api/book, /api/llm
-│   │   ├── llm/                  # 3-Tier Provider abstraction (Groq, OpenRouter, Gemini, Router)
-│   │   ├── models/               # Pydantic data schemas
-│   │   ├── config.py             # Pydantic Settings reading .env
-│   │   └── main.py               # App configuration & CORS middleware
-│   ├── tests/                    # 13 backend unit & router fallback tests
-│   ├── requirements.txt
-│   └── run.py                    # Server launch script
+│   │   ├── api/                  # /api/health, /api/flights, /api/book, /api/llm, /api/metrics
+│   │   ├── llm/                  # 3-Tier Provider abstraction (Groq, OpenRouter, Gemini)
+│   │   └── main.py               # App configuration & Prometheus instrumentations
+│   └── tests/                    # Backend unit & router fallback tests
 ├── tests/                        # Playwright Test Suite (TypeScript)
-│   ├── e2e/                      # 11 baseline E2E & API health tests
-│   │   ├── search.spec.ts
-│   │   ├── select-flight.spec.ts
-│   │   ├── booking.spec.ts
-│   │   ├── validation.spec.ts
-│   │   └── api-health.spec.ts
-│   ├── generated/                # Isolated directory for AI-generated candidate tests
-│   ├── playwright.config.ts
-│   └── package.json
 ├── docs/
-│   ├── increment-1.md            # SUT & baseline test specification
-│   ├── increment-2.md            # Change detection & business impact design
-│   └── increment-3.md            # Test selection & AI generation design
+│   ├── increment-2.md
+│   ├── increment-3.md
+│   ├── increment-4.md
+│   └── increment-5.md            # Production CI/CD, Genuine MCP & Release Confidence
+├── pytest.ini                    # Standard pytest test discovery & pythonpath configuration
 ├── .env.example                  # Template with Groq, OpenRouter, Gemini configs
-├── .gitignore                    # Secrets and build ignore rules
 └── README.md
 ```
 
@@ -322,14 +314,17 @@ Fallback Used: No
 
 ### 9. How to Run Automated Tests
 
-Execute automated tests across all tiers (94 unit & integration tests):
+Execute the complete automated test suite across all subsystems (**140 unit, intelligence & integration tests passing**):
 
 ```bash
-# Run all TravelGuard unit & integration tests (94 tests)
-python -m pytest travelguard/tests/ -v
+# Run all TravelGuard and backend tests (140 tests passing)
+python -m pytest
 
-# Run backend API tests
-pytest backend/tests
+# Run specific intelligence test files with verbose output
+python -m pytest travelguard/tests/test_autonomous_pipeline.py -v
+python -m pytest travelguard/tests/test_quality_gate.py -v
+python -m pytest travelguard/tests/test_release_confidence.py -v
+python -m pytest travelguard/tests/test_mcp_genuine.py -v
 
 # Run Playwright E2E suite
 cd tests && npx playwright test
@@ -337,30 +332,63 @@ cd tests && npx playwright test
 
 ---
 
-### 10. Autonomous QA Demo Commands (Increment 4)
+### 10. Autonomous QA Demo Commands (Deterministic)
 
-Run deterministic, observable demo scenarios:
+Run fully deterministic, reproducible demo scenarios demonstrating autonomous failure classification, self-healing, and release quality gating:
 
 ```bash
-# Scenario 1: UI Locator Drift -> Diagnosed as TEST_DRIFT -> Automatically Healed
+# Scenario A: UI Locator Drift -> Diagnosed as TEST_DRIFT -> Self-Heals -> Release ALLOWED
 python -m travelguard autonomous-demo --demo booking-ui-drift --mock-llm
+# Expected: Exit Code 0 | Verdict: RELEASE ALLOWED (PASS WITH HEALING)
 
-# Scenario 2: Backend API Defect -> Diagnosed as PRODUCT_DEFECT -> Self-healing REJECTED -> Bug Reported
+# Scenario B: Backend 500 Defect -> Diagnosed as PRODUCT_DEFECT -> Healing REJECTED -> Release BLOCKED
 python -m travelguard autonomous-demo --demo booking-api-defect --mock-llm
+# Expected: Exit Code 2 | Verdict: RELEASE BLOCKED
 
-# Scenario 3: Backend Offline -> Diagnosed deterministically as ENVIRONMENT_FAILURE -> Pipeline BLOCKED
+# Scenario C: Environment Offline -> Diagnosed as ENVIRONMENT_FAILURE -> Release BLOCKED
 python -m travelguard autonomous-demo --demo environment-failure --mock-llm
+# Expected: Exit Code 3 | Verdict: RELEASE BLOCKED (ENVIRONMENT FAILURE)
 ```
 
 ---
 
-### 11. How to Start the SkyBook Application
+### 11. CI/CD Quality Gate & Production Observability
+
+#### A. Standardized Quality Gate Exit Codes
+The Quality Gate (`travelguard/quality_gate.py`) returns standard exit codes for seamless CI/CD integration:
+- **`0`**: `RELEASE ALLOWED` (Suite passed or healed with confidence $\ge 0.85$)
+- **`2`**: `RELEASE BLOCKED` (Real product defect detected; bug report generated)
+- **`3`**: `RELEASE BLOCKED` (Environment / infrastructure failure detected)
+- **`4`**: `RELEASE BLOCKED` (Unclassified or low-confidence failure)
+
+Run on any branch or pull request:
+```bash
+python -m travelguard autonomous-run --quality-gate
+```
+
+#### B. Prometheus Metrics & Grafana Dashboard
+- Prometheus metrics are exposed at `GET /api/metrics` via FastAPI.
+- Tracked metrics:
+  - `travelguard_runs_total` (counter partitioned by status)
+  - `travelguard_quality_gate_decision_total` (ALLOW_RELEASE vs BLOCK_RELEASE)
+  - `travelguard_release_confidence` (gauge)
+  - `travelguard_tests_healed_total` (counter)
+  - `travelguard_defects_detected_total` (counter)
+- Pre-configured Grafana dashboard JSON available at `observability/grafana/dashboard.json`.
+
+#### C. GitHub Actions CI/CD Pipeline
+- Automated quality gate workflow configured in `.github/workflows/qa.yml`.
+- Runs full test suite, launches SUT, executes `travelguard autonomous-run --quality-gate`, and archives quality reports.
+
+---
+
+### 12. How to Start the SkyBook Application
 
 #### Start Backend
 ```bash
 uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000 --reload
 ```
-Backend runs at `http://localhost:8000` (docs at `http://localhost:8000/docs`).
+Backend runs at `http://localhost:8000` (API docs at `http://localhost:8000/docs`, metrics at `http://localhost:8000/api/metrics`).
 
 #### Start Frontend
 ```bash
@@ -371,7 +399,7 @@ SkyBook frontend opens at `http://localhost:5173`.
 
 ---
 
-### 12. Incremental Roadmap
+### 13. Incremental Roadmap
 
 ```
 Git / Application Changes
@@ -394,8 +422,13 @@ Failure Diagnosis      ← COMPLETED (Increment 4)
         ↓
 Self-Healing           ← COMPLETED (Increment 4)
         ↓
-Defect Analysis        ← (Increment 5)
+Defect Analysis        ← COMPLETED (Increment 5)
         ↓
-Release Decision       ← (Increment 5)
+Genuine Playwright MCP ← COMPLETED (Increment 5)
+        ↓
+Release Confidence     ← COMPLETED (Increment 5)
+        ↓
+CI/CD Quality Gate     ← COMPLETED (Increment 5)
 ```
+
 

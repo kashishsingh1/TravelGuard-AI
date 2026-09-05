@@ -453,9 +453,9 @@ class SelfHealingEngine:
         logger.info(f"[Healing] Re-running repaired test: {test_file}")
         rel_file = Path(test_file)
         if rel_file.parts and rel_file.parts[0] == "tests":
-            rel_for_playwright = str(Path(*rel_file.parts[1:]))
+            rel_for_playwright = "/".join(rel_file.parts[1:])
         else:
-            rel_for_playwright = str(rel_file)
+            rel_for_playwright = "/".join(rel_file.parts)
 
         try:
             result = subprocess.run(
@@ -464,11 +464,14 @@ class SelfHealingEngine:
                 capture_output=True,
                 text=True,
                 timeout=120,
+                shell=(sys.platform == "win32"),
                 env=dict(os.environ),
             )
             passed = result.returncode == 0
             icon = "PASS" if passed else "FAIL"
-            logger.info(f"[Healing] Re-run result: {icon}")
+            logger.info(f"[Healing] Re-run result: {icon} (code={result.returncode})")
+            if not passed:
+                print(f"[Healing Debug] Re-run failed: stdout={result.stdout[:300]!r}, stderr={result.stderr[:300]!r}")
             return passed
         except subprocess.TimeoutExpired:
             logger.error("[Healing] Re-run timed out")

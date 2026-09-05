@@ -1,87 +1,50 @@
-"""PlaywrightMCPService — real browser inspection for locator discovery and UI state.
-
-Uses Playwright's Node.js subprocess to navigate to the target application URL and
-inspect the live DOM/accessibility tree. Provides evidence for the diagnosis engine
-to reason about locator drift vs. real application defects.
+"""PlaywrightMCPService — genuine Model Context Protocol (MCP) client and browser inspector.
 
 Architecture:
-  TravelGuard Agent
-        ↓
+  TravelGuard Agent / Healing Engine
+            ↓
   PlaywrightMCPService
-        ↓
-  Running SkyBook (browser via npx playwright)
-        ↓
-  Observed UI (accessible elements, roles, names)
-        ↓
-  AI reasoning (diagnosis engine)
+            ↓
+  PlaywrightMCPClient (JSON-RPC 2.0 stdio transport)
+            ↓
+  Playwright MCP Server (travelguard/mcp_server.py)
+            ↓
+  Headless Chromium Browser
+            ↓
+  Target Application (SkyBook)
+
+Provides live DOM and accessibility evidence to FailureDiagnosisEngine and SelfHealingEngine,
+and allows deterministic validation of candidate locators before test patching.
 """
 
 import json
 import logging
 import os
 import subprocess
-import tempfile
+import sys
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("travelguard.mcp")
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _TESTS_DIR = _REPO_ROOT / "tests"
 
-# Playwright inspection script template — run inside npx playwright
-_INSPECTION_SCRIPT = """
-const {{ chromium }} = require('@playwright/test');
-
-(async () => {{
-  const browser = await chromium.launch({{ headless: true }});
-  const page = await browser.newPage();
-  try {{
-    await page.goto('{url}', {{ waitUntil: 'domcontentloaded', timeout: 15000 }});
-    await page.waitForTimeout(1500);
-
-    const elements = await page.evaluate(() => {{
-      const results = [];
-      const walker = document.createTreeWalker(
-        document.body,
-        NodeFilter.SHOW_ELEMENT,
-        null
-      );
-      let node;
-      while ((node = walker.nextNode())) {{
-        const tag = node.tagName.toLowerCase();
-        if (!['button', 'a', 'input', 'select', 'textarea', 'label', 'h1', 'h2', 'h3'].includes(tag)) continue;
-        const role = node.getAttribute('role') || tag;
-        const text = (node.textContent || '').trim().substring(0, 100);
-        const name = node.getAttribute('aria-label') || node.getAttribute('name') || text;
-        const testId = node.getAttribute('data-testid') || '';
-        const placeholder = node.getAttribute('placeholder') || '';
-        const type = node.getAttribute('type') || '';
-        if (text || name || testId) {{
-          results.push({{ tag, role, name, text, testId, placeholder, type }});
-        }}
-      }}
-      return results;
-    }});
-
-    const title = await page.title();
-    const url = page.url();
-    console.log(JSON.stringify({{ success: true, title, url, elements }}));
-  }} catch (err) {{
-    console.log(JSON.stringify({{ success: false, error: err.message, elements: [] }}));
-  }} finally {{
-    await browser.close();
-  }}
-}})();
-"""
-
 
 class ElementInfo:
     """Represents a discovered UI element from browser inspection."""
 
-    def __init__(self, tag: str, role: str, name: str, text: str,
-                 test_id: str = "", placeholder: str = "", input_type: str = ""):
+    def __init__(
+        self,
+        tag: str,
+        role: str,
+        name: str,
+        text: str,
+        test_id: str = "",
+        placeholder: str = "",
+        input_type: str = "",
+    ):
         self.tag = tag
         self.role = role
         self.name = name
@@ -128,7 +91,7 @@ class BrowserInspectionResult:
         title: str = "",
         elements: Optional[List[ElementInfo]] = None,
         error: str = "",
-        method: str = "playwright_subprocess",
+        method: str = "playwright_mcp",
     ):
         self.available = available
         self.url = url
@@ -145,21 +108,17 @@ class BrowserInspectionResult:
         """Find elements whose name or text contains approximate_name (case-insensitive)."""
         q = approximate_name.lower()
         return [
-            e for e in self.elements
+            e
+            for e in self.elements
             if q in (e.name or "").lower() or q in (e.text or "").lower()
         ]
 
     def find_similar_to(self, old_name: str) -> List[ElementInfo]:
-        """
-        Find elements that may be semantic replacements for old_name.
-        Looks for elements with similar roles (button, link) where the name changed.
-        """
+        """Find elements that may be semantic replacements for old_name."""
         buttons = self.find_buttons()
-        # Direct substring match
         direct = self.find_by_approximate_name(old_name)
         if direct:
             return direct
-        # Return all buttons as candidates (the LLM will reason about semantics)
         return buttons
 
     def to_context_string(self, max_elements: int = 30) -> str:
@@ -179,15 +138,125 @@ class BrowserInspectionResult:
         return "\n".join(lines)
 
 
+class PlaywrightMCPClient:
+    """
+    Model Context Protocol (MCP) Client for stdio JSON-RPC 2.0 communication.
+    Connects to travelguard.mcp_server and executes MCP tools.
+    """
+
+    def __init__(self, server_module: str = "travelguard.mcp_server", timeout: int = 25):
+        self.server_module = server_module
+        self.timeout = timeout
+        self._proc: Optional[subprocess.Popen] = None
+        self._request_id = 0
+
+    def start(self) -> None:
+        """Launch the MCP server process with piped stdio."""
+        if self._proc is not None and self._proc.poll() is None:
+            return
+
+        cmd = [sys.executable, "-m", self.server_module]
+        env = dict(os.environ)
+        # Ensure PYTHONPATH includes repo root and backend
+        pypath = [str(_REPO_ROOT), str(_REPO_ROOT / "backend")]
+        if "PYTHONPATH" in env:
+            pypath.append(env["PYTHONPATH"])
+        env["PYTHONPATH"] = os.pathsep.join(pypath)
+
+        self._proc = subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+            cwd=str(_REPO_ROOT),
+            env=env,
+        )
+
+        # Send MCP initialize
+        init_res = self._send_request(
+            "initialize",
+            {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "travelguard-agent", "version": "0.5.0"},
+            },
+        )
+        logger.info(f"[MCP-Client] Connected to MCP server: {init_res.get('serverInfo', {})}")
+
+        # Send notifications/initialized
+        self._send_notification("notifications/initialized", {})
+
+    def stop(self) -> None:
+        """Terminate the MCP server process."""
+        if self._proc:
+            try:
+                self._proc.terminate()
+                self._proc.wait(timeout=2)
+            except Exception:
+                try:
+                    self._proc.kill()
+                except Exception:
+                    pass
+            self._proc = None
+
+    def list_tools(self) -> List[Dict[str, Any]]:
+        """Query registered tools from the MCP server."""
+        res = self._send_request("tools/list", {})
+        return res.get("tools", [])
+
+    def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Invoke an MCP tool via tools/call."""
+        res = self._send_request("tools/call", {"name": tool_name, "arguments": arguments})
+        return res
+
+    def _send_request(self, method: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        if not self._proc or self._proc.poll() is not None:
+            self.start()
+
+        self._request_id += 1
+        payload = {
+            "jsonrpc": "2.0",
+            "id": self._request_id,
+            "method": method,
+            "params": params,
+        }
+        raw_msg = json.dumps(payload) + "\n"
+        assert self._proc and self._proc.stdin and self._proc.stdout
+        self._proc.stdin.write(raw_msg)
+        self._proc.stdin.flush()
+
+        # Read JSON response line
+        line = self._proc.stdout.readline()
+        if not line:
+            raise RuntimeError("MCP server closed connection without response")
+
+        resp = json.loads(line.strip())
+        if "error" in resp:
+            raise RuntimeError(f"MCP Server error: {resp['error']}")
+        return resp.get("result", {})
+
+    def _send_notification(self, method: str, params: Dict[str, Any]) -> None:
+        if not self._proc or self._proc.poll() is not None:
+            return
+        payload = {"jsonrpc": "2.0", "method": method, "params": params}
+        raw_msg = json.dumps(payload) + "\n"
+        assert self._proc.stdin
+        self._proc.stdin.write(raw_msg)
+        self._proc.stdin.flush()
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.stop()
+
+
 class PlaywrightMCPService:
     """
-    Browser inspection service using Playwright as an MCP-compatible agent tool.
-
-    Navigates to the target application URL and inspects the live DOM/accessibility
-    tree to provide real UI state as evidence for failure diagnosis.
-
-    This is NOT a fake wrapper. It runs a real Playwright browser instance
-    and returns actual DOM element information.
+    High-level browser automation service for TravelGuard AI backed by genuine Playwright MCP.
     """
 
     def __init__(
@@ -199,168 +268,91 @@ class PlaywrightMCPService:
         self.tests_dir = tests_dir or _TESTS_DIR
         self.repo_root = repo_root or _REPO_ROOT
         self.timeout_seconds = timeout_seconds
+        self._client: Optional[PlaywrightMCPClient] = None
 
-    def _is_playwright_available(self) -> bool:
-        """Check whether npx playwright is callable in the tests directory."""
-        try:
-            result = subprocess.run(
-                ["npx", "playwright", "--version"],
-                cwd=str(self.tests_dir),
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            return result.returncode == 0
-        except Exception:
-            return False
+    def _get_client(self) -> PlaywrightMCPClient:
+        if self._client is None:
+            self._client = PlaywrightMCPClient(timeout=self.timeout_seconds)
+            self._client.start()
+        return self._client
 
     def inspect_url(self, url: str) -> BrowserInspectionResult:
         """
-        Navigate to a URL and return all discovered interactive elements.
-        Provides genuine browser state as evidence for the diagnosis engine.
+        Inspect live application URL using the Playwright MCP server tool 'browser_navigate_and_inspect'.
         """
-        logger.info(f"[MCP] Inspecting URL: {url}")
-
-        if not self._is_playwright_available():
-            logger.warning("[MCP] Playwright not available — browser inspection skipped")
-            return BrowserInspectionResult(
-                available=False,
-                url=url,
-                error="Playwright not available in this environment",
-                method="unavailable",
-            )
-
-        # Write the inspection script to a temp file
-        script_content = _INSPECTION_SCRIPT.format(url=url)
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".js", delete=False, encoding="utf-8"
-        ) as tmp:
-            tmp.write(script_content)
-            script_path = tmp.name
-
+        logger.info(f"[MCP] Inspecting URL via MCP server: {url}")
         try:
-            env = dict(os.environ)
-            result = subprocess.run(
-                ["node", script_path],
-                cwd=str(self.tests_dir),
-                capture_output=True,
-                text=True,
-                timeout=self.timeout_seconds,
-                env=env,
-            )
-            raw_output = result.stdout.strip()
-
-            if not raw_output:
-                logger.warning(f"[MCP] Empty output from browser script. stderr: {result.stderr[:500]}")
+            client = self._get_client()
+            res = client.call_tool("browser_navigate_and_inspect", {"url": url})
+            content_blocks = res.get("content", [])
+            if not content_blocks:
                 return BrowserInspectionResult(
                     available=False,
                     url=url,
-                    error=result.stderr[:500] or "Empty browser output",
+                    error="No content returned from MCP tool",
+                    method="playwright_mcp",
                 )
 
-            # Find the last line that looks like JSON
-            json_line = None
-            for line in reversed(raw_output.splitlines()):
-                line = line.strip()
-                if line.startswith("{"):
-                    json_line = line
-                    break
+            data_str = content_blocks[0].get("text", "{}")
+            data = json.loads(data_str)
 
-            if not json_line:
-                logger.warning("[MCP] No JSON output found from browser script")
+            if not data.get("success", False):
                 return BrowserInspectionResult(
                     available=False,
                     url=url,
-                    error="No JSON output from browser inspection",
-                )
-
-            data = json.loads(json_line)
-
-            if not data.get("success"):
-                logger.warning(f"[MCP] Browser inspection failed: {data.get('error')}")
-                return BrowserInspectionResult(
-                    available=False,
-                    url=url,
-                    error=data.get("error", "Browser reported failure"),
+                    error=data.get("error", "Unknown browser error"),
+                    method="playwright_mcp",
                 )
 
             elements = []
-            for e in data.get("elements", []):
-                elements.append(ElementInfo(
-                    tag=e.get("tag", ""),
-                    role=e.get("role", ""),
-                    name=e.get("name", ""),
-                    text=e.get("text", ""),
-                    test_id=e.get("testId", ""),
-                    placeholder=e.get("placeholder", ""),
-                    input_type=e.get("type", ""),
-                ))
+            for raw in data.get("elements", []):
+                elements.append(
+                    ElementInfo(
+                        tag=raw.get("tag", ""),
+                        role=raw.get("role", ""),
+                        name=raw.get("name", ""),
+                        text=raw.get("text", ""),
+                        test_id=raw.get("testId", ""),
+                        placeholder=raw.get("placeholder", ""),
+                        input_type=raw.get("type", ""),
+                    )
+                )
 
-            logger.info(f"[MCP] Found {len(elements)} elements on {url}")
             return BrowserInspectionResult(
                 available=True,
                 url=data.get("url", url),
                 title=data.get("title", ""),
                 elements=elements,
-            )
-
-        except subprocess.TimeoutExpired:
-            logger.warning(f"[MCP] Browser inspection timed out after {self.timeout_seconds}s")
-            return BrowserInspectionResult(
-                available=False,
-                url=url,
-                error=f"Browser inspection timed out after {self.timeout_seconds}s",
-            )
-        except json.JSONDecodeError as jde:
-            logger.warning(f"[MCP] JSON parse error from browser script: {jde}")
-            return BrowserInspectionResult(
-                available=False,
-                url=url,
-                error=f"JSON parse error: {jde}",
+                method="playwright_mcp",
             )
         except Exception as exc:
-            logger.warning(f"[MCP] Unexpected error during browser inspection: {exc}")
+            logger.warning(f"[MCP] Inspection via MCP failed ({exc}).")
             return BrowserInspectionResult(
                 available=False,
                 url=url,
                 error=str(exc),
+                method="playwright_mcp_failed",
             )
-        finally:
-            try:
-                Path(script_path).unlink(missing_ok=True)
-            except Exception:
-                pass
 
-    def find_replacement_for_locator(
-        self,
-        url: str,
-        broken_locator: str,
-        old_name: str,
-    ) -> Optional[ElementInfo]:
+    def validate_locator(self, url: str, locator: str) -> bool:
         """
-        Inspect the running application to find the current element that
-        corresponds to a broken locator.
-
-        Example:
-          broken_locator = "getByRole('button', { name: 'Book Flight' })"
-          old_name = "Book Flight"
-          → discovers button "Reserve Flight" → returns ElementInfo
+        Validate whether a Playwright locator exists on the page using MCP tool 'browser_validate_locator'.
         """
-        inspection = self.inspect_url(url)
-        if not inspection.available:
-            return None
+        logger.info(f"[MCP] Validating locator via MCP tool: {locator}")
+        try:
+            client = self._get_client()
+            res = client.call_tool("browser_validate_locator", {"url": url, "locator": locator})
+            content_blocks = res.get("content", [])
+            if not content_blocks:
+                return False
+            data = json.loads(content_blocks[0].get("text", "{}"))
+            return bool(data.get("valid", False))
+        except Exception as exc:
+            logger.warning(f"[MCP] Locator validation error: {exc}")
+            return False
 
-        candidates = inspection.find_similar_to(old_name)
-        if candidates:
-            # Prefer button/link candidates
-            button_candidates = [c for c in candidates if c.tag in ("button", "a")]
-            if button_candidates:
-                return button_candidates[0]
-            return candidates[0]
-
-        # Fallback: return first button found
-        buttons = inspection.find_buttons()
-        if buttons:
-            return buttons[0]
-
-        return None
+    def close(self) -> None:
+        """Stop the underlying MCP client and server process."""
+        if self._client:
+            self._client.stop()
+            self._client = None

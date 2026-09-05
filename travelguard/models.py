@@ -342,11 +342,14 @@ class QualityReport(BaseModel):
     environment_failures: int = Field(default=0, description="Tests classified as ENVIRONMENT_FAILURE")
     unknown_failures: int = Field(default=0, description="Tests with UNKNOWN classification")
     release_confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="Release confidence score")
+    release_decision: Optional[str] = Field(default="PASS", description="Quality gate release decision")
+    quality_gate_passed: bool = Field(default=True, description="Whether quality gate passed")
+    confidence_explanation: Optional[str] = Field(default="", description="Explanation of confidence score")
     summary: str = Field(default="", description="Human-readable run summary")
 
 
 class AutonomousRunResult(BaseModel):
-    """Complete output of the Increment 4 autonomous QA pipeline."""
+    """Complete output of the autonomous QA pipeline."""
     __test__ = False
     run_id: str = Field(..., description="Unique run identifier")
     impact: ImpactAnalysisResult = Field(..., description="Impact analysis")
@@ -356,3 +359,5 @@ class AutonomousRunResult(BaseModel):
     diagnosis_results: List[DiagnosisResult] = Field(default_factory=list)
     healing_results: List[HealingResult] = Field(default_factory=list)
     quality_report: QualityReport = Field(..., description="Final quality verdict")
+    release_confidence_breakdown: Optional[Dict[str, Any]] = Field(default=None)
+    quality_gate_decision: Optional[Dict[str, Any]] = Field(default=None)

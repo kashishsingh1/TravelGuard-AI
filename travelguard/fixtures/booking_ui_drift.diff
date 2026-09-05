@@ -11,6 +11,6 @@ index 518ab89..c91ae88 100644
                  className="btn btn-primary btn-large book-flight-btn"
                  disabled={isLoading}
                >
--                {isLoading ? 'Processing Booking...' : 'Reserve Flight'}
+-                {isLoading ? 'Processing Booking...' : 'Book Flight'}
 +                {isLoading ? 'Processing Booking...' : 'Reserve Flight'}
                </button>

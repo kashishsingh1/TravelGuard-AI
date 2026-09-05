@@ -66,6 +66,9 @@ from travelguard.diagnosis_engine import FailureDiagnosisEngine
 from travelguard.execution_engine import TestExecutionEngine
 from travelguard.healing_engine import SelfHealingEngine
 from travelguard.mcp_inspector import BrowserInspectionResult, PlaywrightMCPService
+from travelguard.observability import record_run_metrics, trace_span
+from travelguard.quality_gate import QualityGate, QualityGateDecision
+from travelguard.release_confidence import ReleaseConfidenceEngine
 from travelguard.models import (
     AutonomousRunResult,
     ChangeSet,
@@ -201,15 +204,16 @@ class AutonomousQAEngine:
             self._mcp_service = PlaywrightMCPService(repo_root=self.repo_root)
         return self._mcp_service
 
-    # ─────────────────────────────────────────────────────────────────────────
+    # ────────────────────────────────────────────────────────────────────────────
     # Main entry points
-    # ─────────────────────────────────────────────────────────────────────────
+    # ────────────────────────────────────────────────────────────────────────────
 
     async def run(
         self,
         change_set: ChangeSet,
         mock_impact: Optional[dict] = None,
         demo_execution_results: Optional[List[TestExecutionResult]] = None,
+        mock_selected_tests: Optional[List[SelectedTest]] = None,
     ) -> AutonomousRunResult:
         """
         Execute the full autonomous QA pipeline.
@@ -218,12 +222,14 @@ class AutonomousQAEngine:
             change_set: The change set to analyze
             mock_impact: Optional pre-built impact dict (for demo mode)
             demo_execution_results: Optional pre-built execution results (for demo mode)
+            mock_selected_tests: Optional pre-built test selection (for fully deterministic demo mode;
+                bypasses LLM test selector entirely)
         """
         run_id = _generate_run_id()
         ts = datetime.now(timezone.utc).isoformat()
         logger.info(f"[Autonomous] Starting run: {run_id}")
 
-        # ── Step 1 & 2: Impact Analysis ───────────────────────────────────────
+        # ── Step 1 & 2: Impact Analysis ──────────────────────────────────────
         logger.info("[Autonomous] Step 1/7: Impact analysis")
         impact: ImpactAnalysisResult = await self._impact_analyzer_svc().analyze(
             change_set=change_set,
@@ -233,18 +239,58 @@ class AutonomousQAEngine:
 
         # ── Step 3: Test Selection ─────────────────────────────────────────────
         logger.info("[Autonomous] Step 2/7: Test selection")
-        selected_tests, skipped_tests = await self._selector_svc().select(
-            changes=change_set,
-            impact=impact,
-        )
+        if mock_selected_tests is not None:
+            # Demo mode: use deterministic pre-built test selection (bypasses LLM)
+            selected_tests = mock_selected_tests
+            # Skipped = everything else in inventory
+            inventory = get_test_inventory()
+            selected_ids = {t.test_id for t in selected_tests}
+            skipped_tests = [
+                SkippedTest(
+                    test_id=t.id,
+                    file=t.file,
+                    name=t.name,
+                    reason="Not impacted by this demo scenario.",
+                )
+                for t in inventory.get_all()
+                if t.id not in selected_ids
+            ]
+            logger.info(
+                f"[Autonomous] Demo test selection: {len(selected_tests)} selected | "
+                f"{len(skipped_tests)} skipped (deterministic)"
+            )
+        else:
+            selected_tests, skipped_tests = await self._selector_svc().select(
+                changes=change_set,
+                impact=impact,
+            )
         logger.info(f"[Autonomous] Selected: {len(selected_tests)} | Skipped: {len(skipped_tests)}")
 
         # ── Step 4: Test Execution ─────────────────────────────────────────────
         logger.info("[Autonomous] Step 3/7: Test execution")
         if demo_execution_results is not None:
-            # Demo mode: use provided results (allows deterministic demos)
-            execution_results = demo_execution_results
-            logger.info(f"[Autonomous] Using {len(execution_results)} demo execution results")
+            # Demo mode: use provided results (allows deterministic demos).
+            # Any selected tests NOT covered by demo results are implicitly
+            # passed (they are not the impacted tests; only failing ones are
+            # injected into the demo). This ensures confidence arithmetic is
+            # correct for the selected test count.
+            demo_covered_ids = {r.test_id for r in demo_execution_results}
+            implicit_passes: List[TestExecutionResult] = [
+                TestExecutionResult(
+                    test_id=t.test_id,
+                    test_file=t.file,
+                    test_name=t.name,
+                    status="passed",
+                    duration_ms=0,
+                )
+                for t in selected_tests
+                if t.test_id not in demo_covered_ids
+            ]
+            execution_results = demo_execution_results + implicit_passes
+            logger.info(
+                f"[Autonomous] Using {len(demo_execution_results)} demo results + "
+                f"{len(implicit_passes)} implicit passes for {len(selected_tests)} selected"
+            )
         else:
             execution_results = self._executor_svc().execute(selected_tests)
 
@@ -347,13 +393,13 @@ class AutonomousQAEngine:
         )
         n_final_failed = max(0, n_still_failed)
 
-        release_confidence = _compute_release_confidence(
-            selected=n_selected,
-            passed=len(passed_results),
-            healed=n_healed,
-            real_defects=n_real_defects,
-            env_failures=n_env_failures,
-            unknown_failures=n_unknown,
+        # Use ReleaseConfidenceEngine
+        confidence_result = ReleaseConfidenceEngine.compute(
+            selected_tests=selected_tests,
+            passed_count=len(passed_results),
+            healed_count=n_healed,
+            diagnoses=diagnosis_results,
+            risk_level=impact.risk.level,
         )
 
         quality_status = _determine_quality_status(
@@ -366,6 +412,27 @@ class AutonomousQAEngine:
 
         summary = self._build_summary(
             quality_status, n_selected, n_passed, n_healed, n_real_defects, n_env_failures
+        )
+
+        gate = QualityGate()
+        gate_decision = gate.evaluate(
+            QualityReport(
+                run_id=run_id,
+                timestamp=ts,
+                status=quality_status,
+                changed_files=len(change_set.files),
+                selected_tests=n_selected,
+                skipped_tests=n_skipped,
+                passed=n_passed,
+                failed=n_final_failed,
+                healed=n_healed,
+                real_defects=n_real_defects,
+                environment_failures=n_env_failures,
+                unknown_failures=n_unknown,
+                release_confidence=confidence_result.confidence,
+                summary=summary,
+            ),
+            confidence_result,
         )
 
         quality_report = QualityReport(
@@ -381,17 +448,31 @@ class AutonomousQAEngine:
             real_defects=n_real_defects,
             environment_failures=n_env_failures,
             unknown_failures=n_unknown,
-            release_confidence=round(release_confidence, 2),
+            release_confidence=confidence_result.confidence,
+            release_decision=gate_decision.verdict,
+            quality_gate_passed=gate_decision.passed_gate,
+            confidence_explanation=confidence_result.breakdown.formula_explanation,
             summary=summary,
+        )
+
+        # Record Prometheus metrics
+        record_run_metrics(
+            status=quality_status.value,
+            decision=gate_decision.action.value,
+            confidence=confidence_result.confidence,
+            healed=n_healed,
+            defects=n_real_defects,
+            env_failures=n_env_failures,
+            failures_by_type={d.classification.value: 1 for d in diagnosis_results},
         )
 
         # ── Step 8: Save report ───────────────────────────────────────────────
         logger.info("[Autonomous] Step 7/7: Saving quality report")
-        self._save_quality_report(run_id, quality_report)
+        self._save_quality_report(run_id, quality_report, impact, gate_decision)
 
         logger.info(
             f"[Autonomous] Run complete: {quality_status.value} | "
-            f"Confidence: {release_confidence:.0%} | Run ID: {run_id}"
+            f"Confidence: {confidence_result.confidence:.0%} | Decision: {gate_decision.verdict} | Run ID: {run_id}"
         )
 
         return AutonomousRunResult(
@@ -403,6 +484,8 @@ class AutonomousQAEngine:
             diagnosis_results=diagnosis_results,
             healing_results=healing_results,
             quality_report=quality_report,
+            release_confidence_breakdown=confidence_result.breakdown.model_dump(),
+            quality_gate_decision=gate_decision.model_dump(),
         )
 
     def _build_summary(
@@ -425,13 +508,93 @@ class AutonomousQAEngine:
             return f"Run blocked by environment failures ({env_failures}) or unknown issues."
         return "Test run completed with unresolved failures."
 
-    def _save_quality_report(self, run_id: str, report: QualityReport) -> None:
-        """Persist quality report to artifacts/runs/."""
+    def _save_quality_report(
+        self,
+        run_id: str,
+        report: QualityReport,
+        impact: Optional[ImpactAnalysisResult] = None,
+        gate_decision: Optional[QualityGateDecision] = None,
+    ) -> None:
+        """Persist quality report to artifacts/runs/ and artifacts/quality/."""
+        # 1. artifacts/runs/{run_id}.json
         runs_dir = self.artifacts_dir / "runs"
         runs_dir.mkdir(parents=True, exist_ok=True)
         report_file = runs_dir / f"{run_id}.json"
         try:
             report_file.write_text(json.dumps(report.model_dump(), indent=2), encoding="utf-8")
-            logger.info(f"[Autonomous] Quality report saved: {report_file}")
         except Exception as exc:
-            logger.warning(f"[Autonomous] Failed to save report: {exc}")
+            logger.warning(f"[Autonomous] Failed to save runs report: {exc}")
+
+        # 2. artifacts/quality/quality-report.json
+        quality_dir = self.artifacts_dir / "quality"
+        quality_dir.mkdir(parents=True, exist_ok=True)
+        quality_json = quality_dir / "quality-report.json"
+        try:
+            quality_json.write_text(json.dumps(report.model_dump(), indent=2), encoding="utf-8")
+            logger.info(f"[Autonomous] Quality JSON report saved: {quality_json}")
+        except Exception as exc:
+            logger.warning(f"[Autonomous] Failed to save quality-report.json: {exc}")
+
+        # 3. artifacts/quality/quality-report.md
+        quality_md = quality_dir / "quality-report.md"
+        try:
+            md_content = self._render_markdown_report(report, impact, gate_decision)
+            quality_md.write_text(md_content, encoding="utf-8")
+            logger.info(f"[Autonomous] Quality Markdown report saved: {quality_md}")
+        except Exception as exc:
+            logger.warning(f"[Autonomous] Failed to save quality-report.md: {exc}")
+
+    def _render_markdown_report(
+        self,
+        report: QualityReport,
+        impact: Optional[ImpactAnalysisResult] = None,
+        gate_decision: Optional[QualityGateDecision] = None,
+    ) -> str:
+        """Render a clean GitHub-ready Markdown quality report."""
+        verdict = gate_decision.verdict if gate_decision else report.status.value
+        passed_gate = "PASSED" if (gate_decision and gate_decision.passed_gate) else ("BLOCKED" if report.real_defects > 0 else "UNKNOWN")
+
+        lines = [
+            "# TravelGuard AI — Autonomous QA & Release Quality Report",
+            f"**Run ID:** `{report.run_id}`  ",
+            f"**Timestamp:** `{report.timestamp}`  ",
+            f"**Status:** `{report.status.value}`  ",
+            f"**Release Decision:** **{verdict}** (`{passed_gate}`)  ",
+            f"**Release Confidence:** **{int(report.release_confidence * 100)}%**  ",
+            "",
+            "---",
+            "",
+            "## Quality Gate Summary",
+            f"- **Selected Tests:** {report.selected_tests}",
+            f"- **Skipped Tests:** {report.skipped_tests}",
+            f"- **Passed:** {report.passed}",
+            f"- **Failed:** {report.failed}",
+            f"- **Self-Healed:** {report.healed}",
+            f"- **Real Product Defects:** {report.real_defects}",
+            f"- **Environment Failures:** {report.environment_failures}",
+            "",
+            f"**Summary:** {report.summary}",
+            "",
+        ]
+
+        if report.confidence_explanation:
+            lines += [
+                "### Release Confidence Rationale",
+                f"> {report.confidence_explanation}",
+                "",
+            ]
+
+        if impact:
+            lines += [
+                "## Impact Analysis",
+                f"- **Change Type:** `{impact.change_type}`",
+                f"- **Risk Level:** `{impact.risk.level.upper()}` ({impact.risk.score}/100)",
+                f"- **Business Impact:** {impact.business_impact}",
+                "",
+            ]
+
+        lines += [
+            "---",
+            "_Generated autonomously by TravelGuard AI — Quality Engineering for the AI Era._",
+        ]
+        return "\n".join(lines)

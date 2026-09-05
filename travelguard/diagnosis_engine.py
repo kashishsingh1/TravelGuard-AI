@@ -28,6 +28,7 @@ if str(_BACKEND_DIR) not in sys.path:
 
 from app.llm.router import LLMService, get_llm_service
 
+from travelguard.security import scrub_secrets
 from travelguard.models import (
     ChangeSet,
     DiagnosisResult,
@@ -167,7 +168,7 @@ Actual:   {failure.actual_value or "(not parsed)"}
 === BROWSER INSPECTION (Live Application State) ===
 {browser_context or "(browser inspection not available)"}
 """
-    return evidence
+    return scrub_secrets(evidence)
 
 
 def _extract_json_from_llm(raw_text: str) -> dict:

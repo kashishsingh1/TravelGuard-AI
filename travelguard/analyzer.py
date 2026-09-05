@@ -18,6 +18,7 @@ if str(_backend_dir) not in sys.path:
 from app.llm.base import LLMResponse
 from app.llm.router import LLMService, get_llm_service
 
+from travelguard.security import scrub_secrets
 from travelguard.journey_mapper import DeterministicMappingResult, JourneyMapper
 from travelguard.models import (
     ChangeSet,
@@ -227,6 +228,7 @@ Please analyze this change and provide your response strictly conforming to the 
             try:
                 service = self._get_llm_service()
                 prompt = self.build_prompt(change_set, det_result)
+                prompt = scrub_secrets(prompt)
                 llm_res: LLMResponse = await service.generate(
                     prompt=prompt,
                     system_prompt=SYSTEM_PROMPT,

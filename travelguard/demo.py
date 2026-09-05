@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from travelguard.analyzer import ChangeImpactAnalyzer
 from travelguard.change_detector import ChangeDetector, FixtureChangeSource
-from travelguard.models import ChangeSet, ImpactAnalysisResult
+from travelguard.models import ChangeSet, ImpactAnalysisResult, SelectedTest, TestPriority
 
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -316,4 +316,109 @@ def create_demo_execution_results(scenario_key: str) -> Optional[List[Any]]:
         ]
 
     return None
+
+
+def create_demo_selected_tests(scenario_key: str) -> Optional[List[SelectedTest]]:
+    """Return a deterministic list of SelectedTest for a demo scenario.
+
+    This bypasses the LLM test selector entirely so that autonomous-demo
+    always runs the exact same tests regardless of LLM availability or
+    non-determinism.
+    """
+    norm_key = scenario_key.replace("_", "-")
+
+    if norm_key == "booking-ui-drift":
+        return [
+            SelectedTest(
+                test_id="booking-drift",
+                file="tests/e2e/booking-drift.spec.ts",
+                name="Flight Booking Drift Detection",
+                priority=TestPriority.P1,
+                reason="Booking button locator drifted from 'Book Flight' to 'Reserve Flight'; this test exercises that locator directly.",
+                confidence=0.99,
+            ),
+        ]
+
+    if norm_key == "booking-api-defect":
+        return [
+            SelectedTest(
+                test_id="booking-api",
+                file="tests/e2e/api-health.spec.ts",
+                name="API Health & Booking Contract",
+                priority=TestPriority.P0,
+                reason="Booking API validation regression; this test exercises the POST /api/book endpoint directly.",
+                confidence=0.99,
+            ),
+            SelectedTest(
+                test_id="flight-booking",
+                file="tests/e2e/booking.spec.ts",
+                name="End-to-End Flight Booking",
+                priority=TestPriority.P0,
+                reason="Backend 500 during booking checkout; end-to-end booking flow must fail with real defect verdict.",
+                confidence=0.99,
+            ),
+        ]
+
+    if norm_key == "environment-failure":
+        return [
+            SelectedTest(
+                test_id="booking-api",
+                file="tests/e2e/api-health.spec.ts",
+                name="API Health & Booking Contract",
+                priority=TestPriority.P0,
+                reason="Frontend misconfigured to unreachable port; API health check will fail with ERR_CONNECTION_REFUSED.",
+                confidence=0.99,
+            ),
+        ]
+
+    # For older analysis-only scenarios, no pre-built selection needed
+    return None
+
+
+class DemoSUTContext:
+    """
+    Context manager that synchronizes the live System Under Test (SUT) with demo scenario changes.
+    Temporarily applies real application code changes on disk so that Vite HMR serves the
+    updated UI to the browser during the live autonomous run, and guarantees clean restoration
+    afterwards.
+    """
+
+    def __init__(self, scenario_key: str, repo_root: Optional[Path] = None):
+        norm_key = scenario_key.replace("_", "-")
+        self.scenario_key = norm_key
+        self.repo_root = repo_root or Path(__file__).resolve().parent.parent
+        self.passenger_form_path = self.repo_root / "frontend" / "src" / "components" / "PassengerForm.tsx"
+        self.test_spec_path = self.repo_root / "tests" / "e2e" / "booking-drift.spec.ts"
+        self._orig_passenger_form: Optional[str] = None
+        self._orig_test_spec: Optional[str] = None
+
+    def __enter__(self):
+        import time
+        if self.scenario_key == "booking-ui-drift":
+            if self.passenger_form_path.exists():
+                self._orig_passenger_form = self.passenger_form_path.read_text(encoding="utf-8")
+                # Apply the real UI change: Book Flight -> Reserve Flight
+                updated = self._orig_passenger_form.replace(
+                    'data-testid="book-flight"', 'data-testid="reserve-flight"'
+                ).replace(
+                    "{isLoading ? 'Processing Booking...' : 'Book Flight'}",
+                    "{isLoading ? 'Processing Booking...' : 'Reserve Flight'}",
+                )
+                self.passenger_form_path.write_text(updated, encoding="utf-8")
+                # Allow Vite dev server HMR to propagate update
+                time.sleep(1.0)
+            if self.test_spec_path.exists():
+                self._orig_test_spec = self.test_spec_path.read_text(encoding="utf-8")
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        import time
+        # Always restore files to original pristine state
+        if self._orig_passenger_form is not None and self.passenger_form_path.exists():
+            self.passenger_form_path.write_text(self._orig_passenger_form, encoding="utf-8")
+            time.sleep(0.5)
+        if self._orig_test_spec is not None and self.test_spec_path.exists():
+            self.test_spec_path.write_text(self._orig_test_spec, encoding="utf-8")
+            time.sleep(0.2)
+
 

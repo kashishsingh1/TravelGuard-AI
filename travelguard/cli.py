@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import json
+import os
 from pathlib import Path
 import sys
 from typing import Optional
@@ -23,7 +24,7 @@ if str(_backend_dir) not in sys.path:
 
 from travelguard.autonomous_pipeline import AutonomousQAEngine
 from travelguard.change_detector import ChangeDetector, GitCommitDiffSource, GitWorkingTreeSource, FixtureChangeSource
-from travelguard.demo import DEMO_SCENARIOS, create_demo_execution_results, load_scenario_diff, run_demo_scenario
+from travelguard.demo import DEMO_SCENARIOS, DemoSUTContext, create_demo_execution_results, create_demo_selected_tests, load_scenario_diff, run_demo_scenario
 from travelguard.models import AutonomousRunResult, ChangeSet, TestIntelligenceResult
 from travelguard.pipeline import TestIntelligencePipeline
 from travelguard.registry import get_journey_registry
@@ -308,9 +309,17 @@ def _format_autonomous_report(result: AutonomousRunResult) -> str:
 
     lines += [
         sub,
-        "VERDICT",
+        "VERDICT & RELEASE GATE",
         sub,
-        f"  {qr.summary}",
+        f"  Verdict         : {qr.release_decision or qr.status.value}",
+        f"  Quality Gate    : {'PASSED' if qr.quality_gate_passed else 'BLOCKED'}",
+        f"  Summary         : {qr.summary}",
+    ]
+    if qr.confidence_explanation:
+        lines += [
+            f"  Confidence Logic: {qr.confidence_explanation}",
+        ]
+    lines += [
         "",
         divider,
     ]
@@ -318,7 +327,7 @@ def _format_autonomous_report(result: AutonomousRunResult) -> str:
 
 
 async def handle_autonomous_demo(args: argparse.Namespace) -> int:
-    """Execute the Increment 4 Autonomous QA pipeline for a demo scenario."""
+    """Execute the Autonomous QA pipeline for a demo scenario with live SUT synchronization."""
     scenario_key = args.demo
     scenario = DEMO_SCENARIOS.get(scenario_key) or DEMO_SCENARIOS.get(scenario_key.replace("_", "-"))
     if not scenario:
@@ -336,34 +345,100 @@ async def handle_autonomous_demo(args: argparse.Namespace) -> int:
     detector = ChangeDetector(source=source)
     change_set = detector.get_change_set()
 
-    # Create deterministic execution results for demo
+    # Create deterministic execution results and test selection for demo
     demo_exec_results = create_demo_execution_results(scenario_key)
+    demo_selected_tests = create_demo_selected_tests(scenario_key)
 
     engine = AutonomousQAEngine()
     mock_impact = scenario.get("mock_response") if args.mock_llm else None
 
-    try:
-        result = await engine.run(
-            change_set=change_set,
-            mock_impact=mock_impact,
-            demo_execution_results=demo_exec_results,
-        )
-    except Exception as exc:
-        print(f"[TravelGuard Error] Autonomous pipeline failed: {exc}", file=sys.stderr)
-        import traceback
-        traceback.print_exc()
-        return 1
+    # Synchronize SUT with demo scenario
+    with DemoSUTContext(scenario_key):
+        try:
+            result = await engine.run(
+                change_set=change_set,
+                mock_impact=mock_impact,
+                demo_execution_results=demo_exec_results,
+                mock_selected_tests=demo_selected_tests,
+            )
+        except Exception as exc:
+            print(f"[TravelGuard Error] Autonomous pipeline failed: {exc}", file=sys.stderr)
+            import traceback
+            traceback.print_exc()
+            return 1
 
     if args.json:
         print(json.dumps(result.model_dump(), indent=2))
     else:
         print("\n" + _format_autonomous_report(result) + "\n")
 
-    # Return non-zero exit code when a real defect is detected
-    qr = result.quality_report
-    if qr.real_defects > 0:
-        return 2
-    return 0
+    # Return quality gate exit code
+    decision = result.quality_gate_decision or {}
+    return decision.get("exit_code", 0 if result.quality_report.quality_gate_passed else 1)
+
+
+async def handle_autonomous_run(args: argparse.Namespace) -> int:
+    """Execute the full autonomous QA pipeline on live changes or configured targets."""
+    print("\n[TravelGuard] Initiating Autonomous QA Pipeline...")
+
+    scenario_key = getattr(args, "demo", None)
+    demo_exec_results = None
+    demo_selected_tests = None
+    mock_impact = None
+    sut_context = DemoSUTContext(scenario_key or "")
+
+    if scenario_key:
+        scenario = DEMO_SCENARIOS.get(scenario_key) or DEMO_SCENARIOS.get(scenario_key.replace("_", "-"))
+        if not scenario:
+            print(f"Error: Unknown demo scenario '{scenario_key}'", file=sys.stderr)
+            return 1
+        print(f"[TravelGuard] Running demo scenario: {scenario['name']}")
+        from travelguard.change_detector import FixtureChangeSource
+        raw_diff = load_scenario_diff(scenario_key)
+        source = FixtureChangeSource(raw_diff=raw_diff, fixture_name=scenario["name"])
+        demo_exec_results = create_demo_execution_results(scenario_key)
+        demo_selected_tests = create_demo_selected_tests(scenario_key)
+        if getattr(args, "mock_llm", False):
+            mock_impact = scenario.get("mock_response")
+    elif getattr(args, "ref", None):
+        print(f"[TravelGuard] Detecting changes against Git ref: {args.ref}...")
+        source = GitCommitDiffSource(base_ref=args.ref)
+    else:
+        print("[TravelGuard] Detecting changes in working tree...")
+        source = GitWorkingTreeSource()
+
+    detector = ChangeDetector(source=source)
+    change_set = detector.get_change_set()
+
+    app_url = getattr(args, "app_url", "http://localhost:5173")
+    healing_mode = getattr(args, "healing_mode", "AUTO")
+    os.environ["TRAVELGUARD_HEALING_MODE"] = healing_mode
+
+    engine = AutonomousQAEngine(app_base_url=app_url)
+
+    with sut_context:
+        try:
+            result = await engine.run(
+                change_set=change_set,
+                mock_impact=mock_impact,
+                demo_execution_results=demo_exec_results,
+                mock_selected_tests=demo_selected_tests,
+            )
+        except Exception as exc:
+            print(f"[TravelGuard Error] Autonomous QA failed: {exc}", file=sys.stderr)
+            import traceback
+            traceback.print_exc()
+            return 1
+
+    if getattr(args, "json", False):
+        print(json.dumps(result.model_dump(), indent=2))
+    else:
+        print("\n" + _format_autonomous_report(result) + "\n")
+
+    # Enforce quality gate exit codes
+    decision = result.quality_gate_decision or {}
+    exit_code = decision.get("exit_code", 0 if result.quality_report.quality_gate_passed else 1)
+    return exit_code
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -373,6 +448,56 @@ def build_parser() -> argparse.ArgumentParser:
         description="TravelGuard AI — Autonomous Test Intelligence Platform",
     )
     subparsers = parser.add_subparsers(dest="command", help="Available subcommands")
+
+    # Command: autonomous-run
+    run_parser = subparsers.add_parser(
+        "autonomous-run",
+        help="Run the complete Autonomous QA pipeline (detect, select, execute, diagnose, heal, verify, gate)",
+    )
+    run_parser.add_argument(
+        "--ref",
+        "-r",
+        type=str,
+        default=None,
+        help="Git commit or branch ref to diff against (e.g., HEAD~1, main)",
+    )
+    run_parser.add_argument(
+        "--demo",
+        "-d",
+        type=str,
+        default=None,
+        choices=list(DEMO_SCENARIOS.keys()),
+        help="Run against a predefined demo scenario",
+    )
+    run_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output raw structured JSON instead of formatted report",
+    )
+    run_parser.add_argument(
+        "--mock-llm",
+        action="store_true",
+        help="Use deterministic mock LLM responses (offline/CI mode)",
+    )
+    run_parser.add_argument(
+        "--healing-mode",
+        type=str,
+        default="AUTO",
+        choices=["AUTO", "PROPOSE_ONLY"],
+        help="Self-healing execution mode: AUTO or PROPOSE_ONLY (default: AUTO)",
+    )
+    run_parser.add_argument(
+        "--quality-gate",
+        action="store_true",
+        default=True,
+        help="Enforce release quality gate exit codes",
+    )
+    run_parser.add_argument(
+        "--app-url",
+        type=str,
+        default="http://localhost:5173",
+        help="Base URL of application for browser inspection (default: http://localhost:5173)",
+    )
 
     # Command: analyze
     analyze_parser = subparsers.add_parser("analyze", help="Analyze repository code changes and select/generate tests")
@@ -414,7 +539,7 @@ def build_parser() -> argparse.ArgumentParser:
     # Command: autonomous-demo
     auto_parser = subparsers.add_parser(
         "autonomous-demo",
-        help="Run the full Increment 4 autonomous QA pipeline for a demo scenario",
+        help="Run the full autonomous QA pipeline for a demo scenario",
     )
     auto_parser.add_argument(
         "--demo",
@@ -445,16 +570,21 @@ def main() -> None:
     args = parser.parse_args()
 
     if not args.command:
-        args.command = "analyze"
+        args.command = "autonomous-run"
         args.ref = None
         args.demo = None
         args.json = False
         args.mock_llm = False
+        args.healing_mode = "AUTO"
+        args.quality_gate = True
+        args.app_url = "http://localhost:5173"
 
-    if args.command == "analyze":
-        exit_code = asyncio.run(handle_analyze(args))
+    if args.command == "autonomous-run":
+        exit_code = asyncio.run(handle_autonomous_run(args))
     elif args.command == "autonomous-demo":
         exit_code = asyncio.run(handle_autonomous_demo(args))
+    elif args.command == "analyze":
+        exit_code = asyncio.run(handle_analyze(args))
     elif args.command == "journeys":
         exit_code = handle_journeys(args)
     elif args.command == "test-inventory":
