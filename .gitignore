@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing & Playwright
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+**/test-results/
+**/playwright-report/
+
+# Python / Virtualenv
+.venv/
+venv/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Production builds
+dist/
+build/
+
+# Environment and Secrets (NEVER COMMIT)
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# IDE / OS metadata
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo

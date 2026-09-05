@@ -1,0 +1,1 @@
+"""SkyBook backend application package."""
