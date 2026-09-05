@@ -160,7 +160,9 @@ export const TravelGuardConsole: React.FC<TravelGuardConsoleProps> = ({ onSwitch
   const hasResult   = !!(autonomousResult || intelligenceResult);
   const impact      = intelligenceResult?.impact;
   const qr          = autonomousResult?.quality_report;
-  const riskLevel   = impact?.ai_risk_level || (qr?.quality_gate_passed ? 'LOW' : qr ? 'HIGH' : '');
+  const riskLevel   = impact?.risk?.level || impact?.ai_risk_level || (qr?.quality_gate_passed ? 'LOW' : qr ? 'HIGH' : '');
+  const riskScore   = impact?.risk?.score ?? impact?.ai_risk_score;
+  const riskReason  = impact?.risk?.reason || impact?.ai_risk_reason || impact?.summary || qr?.summary || '';
   const isGatePass  = qr?.quality_gate_passed ?? false;
 
   let verdict: { label: string; sub: string; type: string } | null = null;
@@ -356,7 +358,7 @@ export const TravelGuardConsole: React.FC<TravelGuardConsoleProps> = ({ onSwitch
                   <div className="tg-meta-item">
                     <span className="tg-meta-item-label">Risk Score</span>
                     <span className="tg-meta-item-value" style={{ color: getRiskColor(riskLevel) }}>
-                      {impact?.ai_risk_score ?? '—'}/100
+                      {riskScore !== undefined ? `${riskScore}/100` : '—'}
                     </span>
                   </div>
                   <div className="tg-meta-item">
@@ -386,19 +388,19 @@ export const TravelGuardConsole: React.FC<TravelGuardConsoleProps> = ({ onSwitch
                     {riskLevel.toUpperCase() || '—'}
                   </span>
                 </div>
-                {impact?.ai_risk_score !== undefined && (
+                {riskScore !== undefined && (
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--tg-text-dim)', marginBottom: '0.3rem' }}>
                       <span>Risk Score</span>
-                      <span style={{ fontWeight: 700, color: getRiskColor(riskLevel) }}>{impact.ai_risk_score}/100</span>
+                      <span style={{ fontWeight: 700, color: getRiskColor(riskLevel) }}>{riskScore}/100</span>
                     </div>
                     <div style={{ background: 'var(--tg-surface-card)', borderRadius: '4px', height: '6px', overflow: 'hidden' }}>
-                      <div style={{ width: `${impact.ai_risk_score}%`, height: '100%', background: getRiskColor(riskLevel), borderRadius: '4px', transition: 'width 0.8s ease' }} />
+                      <div style={{ width: `${riskScore}%`, height: '100%', background: getRiskColor(riskLevel), borderRadius: '4px', transition: 'width 0.8s ease' }} />
                     </div>
                   </div>
                 )}
                 <p style={{ fontSize: '0.85rem', color: 'var(--tg-text-muted)', margin: 0, lineHeight: 1.55 }}>
-                  {impact?.ai_risk_reason || impact?.summary || qr?.summary || ''}
+                  {riskReason}
                 </p>
                 {impact && (
                   <div style={{ fontSize: '0.78rem', color: 'var(--tg-text-dim)', display: 'flex', gap: '1rem' }}>
