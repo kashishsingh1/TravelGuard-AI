@@ -7,8 +7,11 @@ import { Confirmation } from './components/Confirmation';
 import { ErrorBanner } from './components/ErrorBanner';
 import { searchFlights, createBooking } from './services/api';
 import { BookingResponse, BookingStep, Flight, FlightSearchParams, PassengerDetails } from './types';
+import { TravelGuardConsole } from './travelguard/TravelGuardConsole';
+import { Shield } from 'lucide-react';
 
 export const App: React.FC = () => {
+  const [viewMode, setViewMode] = useState<'sut' | 'console'>('sut');
   const [step, setStep] = useState<BookingStep>('search');
   const [searchParams, setSearchParams] = useState<FlightSearchParams>({
     origin: 'Delhi',
@@ -75,9 +78,17 @@ export const App: React.FC = () => {
     setErrorMessage('');
   };
 
+  if (viewMode === 'console') {
+    return <TravelGuardConsole onSwitchToSut={() => setViewMode('sut')} />;
+  }
+
   return (
     <div className="app-layout">
-      <Header currentStep={step} onReset={handleReset} />
+      <Header
+        currentStep={step}
+        onReset={handleReset}
+        onOpenConsole={() => setViewMode('console')}
+      />
 
       <main className="main-content">
         <div className="content-wrapper">
@@ -130,6 +141,16 @@ export const App: React.FC = () => {
           <span className="footer-version">v1.0.0</span>
         </div>
       </footer>
+
+      {/* Floating TravelGuard Quick Launcher */}
+      <div
+        className="tg-floating-launcher"
+        onClick={() => setViewMode('console')}
+        title="Open TravelGuard Autonomous QA Developer Console"
+      >
+        <Shield size={18} />
+        <span>TravelGuard Console</span>
+      </div>
     </div>
   );
 };

@@ -86,3 +86,48 @@ async def test_booking_validation_failure():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         res = await client.post("/api/book", json=payload)
         assert res.status_code in (400, 422)
+
+
+@pytest.mark.asyncio
+async def test_travelguard_config_endpoint():
+    """Verify /api/travelguard/config returns demos, journeys, and inventory."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        res = await client.get("/api/travelguard/config")
+        assert res.status_code == 200
+        data = res.json()
+        assert "demos" in data
+        assert "journeys" in data
+        assert "inventory" in data
+        assert len(data["demos"]) >= 4
+        assert len(data["journeys"]) >= 4
+
+
+@pytest.mark.asyncio
+async def test_travelguard_run_endpoint_ui_drift():
+    """Verify /api/travelguard/run executes booking-ui-drift scenario successfully."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        res = await client.post(
+            "/api/travelguard/run",
+            json={"scenario": "booking-ui-drift", "mock_llm": True},
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert "quality_report" in data
+        assert data["quality_report"]["status"] == "PASS_WITH_HEALING"
+        assert data["quality_gate_decision"]["action"] in ("ALLOW_RELEASE", "ALLOW_WITH_AUDIT")
+
+
+@pytest.mark.asyncio
+async def test_travelguard_analyze_endpoint_scenario_d():
+    """Verify /api/travelguard/analyze executes scenario_d and detects coverage gap."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        res = await client.post(
+            "/api/travelguard/analyze",
+            json={"scenario": "scenario_d", "mock_llm": True},
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert "coverage" in data
+        assert data["coverage"]["status"] == "INSUFFICIENT"
+        assert data["generated_test"] is not None
+

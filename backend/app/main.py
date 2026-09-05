@@ -9,6 +9,7 @@ from app.api.flights import router as flights_router
 from app.api.health import router as health_router
 from app.api.llm import router as llm_router
 from app.api.metrics import router as metrics_router
+from app.api.travelguard import router as travelguard_router
 from app.config import get_settings
 
 # Configure logging
@@ -41,6 +42,7 @@ app.include_router(flights_router)
 app.include_router(booking_router)
 app.include_router(llm_router)
 app.include_router(metrics_router)
+app.include_router(travelguard_router)
 
 
 @app.get("/")

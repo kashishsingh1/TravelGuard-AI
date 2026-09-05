@@ -5,9 +5,10 @@ import { BookingStep } from '../types';
 interface HeaderProps {
   currentStep: BookingStep;
   onReset: () => void;
+  onOpenConsole?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ currentStep, onReset }) => {
+export const Header: React.FC<HeaderProps> = ({ currentStep, onReset, onOpenConsole }) => {
   const steps: { key: BookingStep; label: string; number: number }[] = [
     { key: 'search', label: 'Search', number: 1 },
     { key: 'results', label: 'Flights', number: 2 },
@@ -38,9 +39,17 @@ export const Header: React.FC<HeaderProps> = ({ currentStep, onReset }) => {
           </div>
         </div>
 
-        <div className="sut-badge" title="System Under Test for TravelGuard AI">
+        <div
+          className="sut-badge"
+          title="Open TravelGuard AI Developer Console"
+          onClick={onOpenConsole}
+          style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.45rem' }}
+        >
           <ShieldCheck size={16} className="sut-icon" />
-          <span>TravelGuard SUT</span>
+          <span>TravelGuard Dev Console</span>
+          <span style={{ fontSize: '0.7rem', background: '#38bdf8', color: '#090d16', padding: '0.1rem 0.45rem', borderRadius: '4px', fontWeight: 700 }}>
+            OPEN
+          </span>
         </div>
       </div>
 
