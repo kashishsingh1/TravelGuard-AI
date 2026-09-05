@@ -81,3 +81,19 @@ tests:
       - "e2e"
       - "ui"
     expected_duration_ms: 600
+
+  - id: "booking-drift"
+    name: "Flight Booking Drift Detection"
+    file: "tests/e2e/booking-drift.spec.ts"
+    description: "Validates flight booking submission via semantic button role locator, target for self-healing verification."
+    business_journeys:
+      - "flight_booking"
+    criticality: "high"
+    priority_tier: "P1"
+    tags:
+      - "booking"
+      - "drift"
+      - "e2e"
+      - "self_healing"
+    expected_duration_ms: 1000
+

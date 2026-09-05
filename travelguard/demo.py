@@ -120,12 +120,100 @@ DEMO_SCENARIOS = {
             "confidence": 0.96,
         },
     },
+    "booking-ui-drift": {
+        "id": "booking-ui-drift",
+        "name": "Scenario: Booking UI Drift (Self-Healing)",
+        "description": "Button locator drifted from 'Book Flight' to 'Reserve Flight' in PassengerForm",
+        "fixture_file": "booking_ui_drift.diff",
+        "mock_response": {
+            "summary": "Button label and testid changed to Reserve Flight in PassengerForm",
+            "change_type": "ui",
+            "is_behavioral": True,
+            "affected_journeys": [
+                {
+                    "journey_id": "flight_booking",
+                    "journey_name": "Flight Booking & Confirmation",
+                    "impact_level": "high",
+                    "capability": "Flight booking submission button",
+                }
+            ],
+            "ai_risk_level": "medium",
+            "ai_risk_reason": "Button text and locator changed, causing drift in existing Playwright tests.",
+            "recommended_tests": [
+                "Flight Booking Drift Detection (tests/e2e/booking-drift.spec.ts)",
+            ],
+            "business_impact": "Booking workflow intact; automated test locator drifted.",
+            "confidence": 0.95,
+        },
+        "expected_classification": "TEST_DRIFT",
+    },
+    "booking-api-defect": {
+        "id": "booking-api-defect",
+        "name": "Scenario: Booking API Defect (Real Regression)",
+        "description": "Backend API introduces faulty name casing constraint causing HTTP 500",
+        "fixture_file": "booking_api_defect.diff",
+        "mock_response": {
+            "summary": "Backend validation raises 500 for non-uppercase passenger names",
+            "change_type": "api",
+            "is_behavioral": True,
+            "affected_journeys": [
+                {
+                    "journey_id": "flight_booking",
+                    "journey_name": "Flight Booking & Confirmation",
+                    "impact_level": "critical",
+                    "capability": "Server-side booking creation API",
+                }
+            ],
+            "ai_risk_level": "critical",
+            "ai_risk_reason": "Severe regression: server-side 500 error when booking flights with standard names.",
+            "recommended_tests": [
+                "API Health & Booking Contract (tests/e2e/api-health.spec.ts)",
+                "End-to-End Flight Booking (tests/e2e/booking.spec.ts)",
+            ],
+            "business_impact": "Complete booking service disruption for end-users.",
+            "confidence": 0.99,
+        },
+        "expected_classification": "PRODUCT_DEFECT",
+    },
+    "environment-failure": {
+        "id": "environment-failure",
+        "name": "Scenario: Environment Infrastructure Failure",
+        "description": "Frontend configured to unreachable port 9999 causing connection refused",
+        "fixture_file": "environment_failure.diff",
+        "mock_response": {
+            "summary": "API endpoint points to inactive port 9999 causing ERR_CONNECTION_REFUSED",
+            "change_type": "config",
+            "is_behavioral": True,
+            "affected_journeys": [
+                {
+                    "journey_id": "flight_search",
+                    "journey_name": "Flight Search",
+                    "impact_level": "critical",
+                    "capability": "Backend API communication link",
+                }
+            ],
+            "ai_risk_level": "critical",
+            "ai_risk_reason": "Total loss of API connectivity due to port misconfiguration.",
+            "recommended_tests": [
+                "API Health & Booking Contract (tests/e2e/api-health.spec.ts)",
+            ],
+            "business_impact": "Frontend cannot reach any backend endpoints.",
+            "confidence": 0.99,
+        },
+        "expected_classification": "ENVIRONMENT_FAILURE",
+    },
 }
+
+# Add underscore aliases
+DEMO_SCENARIOS["booking_ui_drift"] = DEMO_SCENARIOS["booking-ui-drift"]
+DEMO_SCENARIOS["booking_api_defect"] = DEMO_SCENARIOS["booking-api-defect"]
+DEMO_SCENARIOS["environment_failure"] = DEMO_SCENARIOS["environment-failure"]
 
 
 def load_scenario_diff(scenario_key: str) -> str:
     """Load unified diff text for a demo scenario."""
-    meta = DEMO_SCENARIOS.get(scenario_key)
+    norm_key = scenario_key.replace("_", "-")
+    meta = DEMO_SCENARIOS.get(scenario_key) or DEMO_SCENARIOS.get(norm_key)
     if not meta:
         raise ValueError(f"Unknown scenario '{scenario_key}'. Choose from: {list(DEMO_SCENARIOS.keys())}")
     diff_path = FIXTURES_DIR / meta["fixture_file"]
@@ -138,7 +226,8 @@ async def run_demo_scenario(
     analyzer: Optional[ChangeImpactAnalyzer] = None,
 ) -> Tuple[ChangeSet, ImpactAnalysisResult]:
     """Execute analysis for a specific demo scenario without modifying any repository files."""
-    scenario = DEMO_SCENARIOS.get(scenario_key)
+    norm_key = scenario_key.replace("_", "-")
+    scenario = DEMO_SCENARIOS.get(scenario_key) or DEMO_SCENARIOS.get(norm_key)
     if not scenario:
         raise ValueError(f"Invalid demo scenario: {scenario_key}")
 
@@ -152,3 +241,79 @@ async def run_demo_scenario(
 
     result = await analyzer.analyze(change_set=change_set, mock_response=mock_payload)
     return change_set, result
+
+
+def create_demo_execution_results(scenario_key: str) -> Optional[List[Any]]:
+    """Create deterministic simulated test execution results for autonomous demo runs."""
+    from travelguard.models import TestExecutionResult, TestFailureInfo
+
+    norm_key = scenario_key.replace("_", "-")
+    if norm_key == "booking-ui-drift":
+        failure = TestFailureInfo(
+            test_id="booking-drift",
+            test_name="TEST: Flight Booking Drift Detection",
+            test_file="tests/e2e/booking-drift.spec.ts",
+            error_message="Error: locator.click: Target closed\n=========================== logs ===========================\nwaiting for getByRole('button', { name: 'Book Flight' })\n============================================================",
+            stack_trace="Error: locator.click: Target closed\n    at tests/e2e/booking-drift.spec.ts:25:56",
+            failure_line=25,
+            locator_used="getByRole('button', { name: 'Book Flight' })",
+            test_source_snippet="  24    // 5. Submit booking using getByRole locator\n  25 >>> await page.getByRole('button', { name: 'Book Flight' }).click();\n  26    ",
+            duration_ms=1540,
+        )
+        return [
+            TestExecutionResult(
+                test_id="booking-drift",
+                test_file="tests/e2e/booking-drift.spec.ts",
+                test_name="TEST: Flight Booking Drift Detection",
+                status="failed",
+                failure=failure,
+                duration_ms=1540,
+            )
+        ]
+
+    if norm_key == "booking-api-defect":
+        failure = TestFailureInfo(
+            test_id="booking-api",
+            test_name="API Health & Booking Contract",
+            test_file="tests/e2e/api-health.spec.ts",
+            error_message="Error: expect(received).toBe(expected)\n\nExpected: 200\nReceived: 500\n\nHTTP 500 Internal Server Error: Passenger name must be uppercase",
+            stack_trace="Error: expect(received).toBe(expected)\n    at tests/e2e/api-health.spec.ts:42:28",
+            failure_line=42,
+            expected_value="200",
+            actual_value="500",
+            duration_ms=480,
+        )
+        return [
+            TestExecutionResult(
+                test_id="booking-api",
+                test_file="tests/e2e/api-health.spec.ts",
+                test_name="API Health & Booking Contract",
+                status="failed",
+                failure=failure,
+                duration_ms=480,
+            )
+        ]
+
+    if norm_key == "environment-failure":
+        failure = TestFailureInfo(
+            test_id="booking-api",
+            test_name="API Health & Booking Contract",
+            test_file="tests/e2e/api-health.spec.ts",
+            error_message="FetchError: connect ECONNREFUSED 127.0.0.1:9999\nERR_CONNECTION_REFUSED",
+            stack_trace="FetchError: connect ECONNREFUSED 127.0.0.1:9999\n    at tests/e2e/api-health.spec.ts:18:14",
+            failure_line=18,
+            duration_ms=120,
+        )
+        return [
+            TestExecutionResult(
+                test_id="booking-api",
+                test_file="tests/e2e/api-health.spec.ts",
+                test_name="API Health & Booking Contract",
+                status="failed",
+                failure=failure,
+                duration_ms=120,
+            )
+        ]
+
+    return None
+

@@ -1,19 +1,22 @@
 # TravelGuard AI — Autonomous QA Platform
-## Increment 3: Intelligent Test Selection & AI Test Generation
+## Increment 4: Autonomous Test Execution, Failure Diagnosis & Self-Healing
 
 ---
 
 ### 1. What TravelGuard AI Is
-**TravelGuard AI** is an **Autonomous QA Engineer for AI-driven travel applications**. It bridges the gap between code-level commits and high-level travel business intent:
+**TravelGuard AI** is an **Autonomous Quality Engineer for the AI Development Era**. It bridges the gap between code-level commits, runtime browser execution, failure diagnosis, and verified self-healing:
 - Detects what changed across the repository (working tree, git commit ranges, or CI PR diffs).
 - Translates file changes into affected **Business User Journeys** (Flight Search, Flight Selection, Passenger Details, Flight Booking & Confirmation).
 - Employs a resilient 3-tier LLM hierarchy (**Groq** primary $\to$ **OpenRouter** fallback 1 $\to$ **Gemini** fallback 2).
 - Computes a transparent, explainable **Risk Score (0–100)** and risk tier (**LOW, MEDIUM, HIGH, CRITICAL**).
 - Maintains a machine-readable **Test Inventory** (`travelguard/test_inventory.yaml`).
-- **Intelligently selects** tests into prioritized tiers (**P0, P1, P2**) with data-driven rationale and transparent accounting of skipped tests.
-- Detects **Coverage Gaps** when changes introduce capabilities unhandled by existing tests.
-- **Generates Playwright TypeScript tests** (`tests/generated/`) with mandatory static validation (imports, assertions, syntax balance, no arbitrary timeouts).
-- Provides reproducible, zero-mutation **4 Hackathon Demo Scenarios**.
+- **Intelligently selects** tests into prioritized tiers (**P0, P1, P2**) with transparent accounting of skipped tests.
+- Detects **Coverage Gaps** and **generates candidate Playwright tests** (`tests/generated/`) with static QA validation.
+- **Autonomously executes tests** using Playwright / Pytest subprocess runners.
+- Inspects runtime DOM and element accessibility via **MCP Browser Inspector**.
+- Accurately diagnoses failures into **`TEST_DRIFT`**, **`PRODUCT_DEFECT`**, or **`ENVIRONMENT_FAILURE`**.
+- **Self-heals** stale locators safely (backup created, confidence gated >= 0.70, re-validated) while strictly refusing to heal real product bugs.
+- Generates executive **Quality Reports** (JSON & Markdown) with overall quality status.
 
 ---
 
@@ -319,26 +322,43 @@ Fallback Used: No
 
 ### 9. How to Run Automated Tests
 
-Execute all 60 automated tests across all tiers:
+Execute automated tests across all tiers (94 unit & integration tests):
 
 ```bash
-# 1. Run TravelGuard Intelligence Unit Tests (36 tests)
-PYTHONPATH=. ./backend/.venv/bin/pytest travelguard/tests
+# Run all TravelGuard unit & integration tests (94 tests)
+python -m pytest travelguard/tests/ -v
 
-# 2. Run Backend & Router Fallback Unit Tests (13 tests)
-PYTHONPATH=backend ./backend/.venv/bin/pytest backend/tests
+# Run backend API tests
+pytest backend/tests
 
-# 3. Run Playwright E2E & Health Suite (11 tests)
-cd tests && npm test
+# Run Playwright E2E suite
+cd tests && npx playwright test
 ```
 
 ---
 
-### 10. How to Start the SkyBook Application
+### 10. Autonomous QA Demo Commands (Increment 4)
+
+Run deterministic, observable demo scenarios:
+
+```bash
+# Scenario 1: UI Locator Drift -> Diagnosed as TEST_DRIFT -> Automatically Healed
+python -m travelguard autonomous-demo --demo booking-ui-drift --mock-llm
+
+# Scenario 2: Backend API Defect -> Diagnosed as PRODUCT_DEFECT -> Self-healing REJECTED -> Bug Reported
+python -m travelguard autonomous-demo --demo booking-api-defect --mock-llm
+
+# Scenario 3: Backend Offline -> Diagnosed deterministically as ENVIRONMENT_FAILURE -> Pipeline BLOCKED
+python -m travelguard autonomous-demo --demo environment-failure --mock-llm
+```
+
+---
+
+### 11. How to Start the SkyBook Application
 
 #### Start Backend
 ```bash
-./backend/.venv/bin/uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000 --reload
+uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000 --reload
 ```
 Backend runs at `http://localhost:8000` (docs at `http://localhost:8000/docs`).
 
@@ -351,7 +371,7 @@ SkyBook frontend opens at `http://localhost:5173`.
 
 ---
 
-### 11. Incremental Roadmap
+### 12. Incremental Roadmap
 
 ```
 Git / Application Changes
@@ -368,11 +388,14 @@ Test Generation        ← COMPLETED (Increment 3)
         ↓
 Static QA Validation   ← COMPLETED (Increment 3)
         ↓
-Test Execution         ← (Increment 4)
+Test Execution         ← COMPLETED (Increment 4)
         ↓
-Self-Healing           ← (Increment 4)
+Failure Diagnosis      ← COMPLETED (Increment 4)
+        ↓
+Self-Healing           ← COMPLETED (Increment 4)
         ↓
 Defect Analysis        ← (Increment 5)
         ↓
 Release Decision       ← (Increment 5)
 ```
+

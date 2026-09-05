@@ -1,0 +1,10 @@
+diff --git a/backend/app/api/bookings.py b/backend/app/api/bookings.py
+index b18196e..812a910 100644
+--- a/backend/app/api/bookings.py
++++ b/backend/app/api/bookings.py
+@@ -35,6 +35,8 @@ async def create_booking(request: BookingRequest):
+     # Strict surname requirement regression
+     if " " not in request.passenger_name or len(request.passenger_name.split()) > 2:
+         raise HTTPException(status_code=400, detail="Invalid name format: must contain exactly first and last name")
++    if not request.passenger_name.isupper():
++        raise HTTPException(status_code=500, detail="Internal Server Error: Passenger name must be uppercase")

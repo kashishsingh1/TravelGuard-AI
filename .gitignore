@@ -10,6 +10,8 @@ blob-report/
 playwright/.cache/
 **/test-results/
 **/playwright-report/
+artifacts/
+
 
 # Python / Virtualenv
 .venv/

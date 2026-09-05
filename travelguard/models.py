@@ -1,4 +1,4 @@
-"""Data models for TravelGuard change detection, business impact, intelligent test selection, and test generation."""
+"""Data models for TravelGuard change detection, business impact, intelligent test selection, test generation, and autonomous QA (Increment 4)."""
 
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -182,3 +182,177 @@ class TestIntelligenceResult(BaseModel):
     skipped_tests: List[SkippedTest] = Field(default_factory=list, description="Tests intentionally omitted")
     coverage: CoverageAnalysis = Field(..., description="Coverage gap evaluation")
     generated_test: Optional[GeneratedTest] = Field(default=None, description="Candidate generated test if gap detected")
+
+
+# ==============================================================================
+# Increment 4: Autonomous Test Execution, Failure Diagnosis & Self-Healing
+# ==============================================================================
+
+class FailureClassification(str, Enum):
+    """Classification of a test failure root cause."""
+    PRODUCT_DEFECT = "PRODUCT_DEFECT"
+    TEST_DRIFT = "TEST_DRIFT"
+    ENVIRONMENT_FAILURE = "ENVIRONMENT_FAILURE"
+    UNKNOWN = "UNKNOWN"
+
+
+class HealingStatus(str, Enum):
+    """Outcome of a self-healing attempt."""
+    HEALED_SUCCESSFULLY = "HEALED_SUCCESSFULLY"
+    HEALING_FAILED = "HEALING_FAILED"
+    PROPOSE_ONLY = "PROPOSE_ONLY"
+    NOT_ATTEMPTED = "NOT_ATTEMPTED"
+    SKIPPED_PRODUCT_DEFECT = "SKIPPED_PRODUCT_DEFECT"
+    SKIPPED_ENVIRONMENT_FAILURE = "SKIPPED_ENVIRONMENT_FAILURE"
+    SKIPPED_UNKNOWN = "SKIPPED_UNKNOWN"
+    SKIPPED_LOW_CONFIDENCE = "SKIPPED_LOW_CONFIDENCE"
+
+
+class QualityStatus(str, Enum):
+    """Final autonomous run quality verdict."""
+    PASS = "PASS"
+    PASS_WITH_HEALING = "PASS_WITH_HEALING"
+    FAIL = "FAIL"
+    REAL_DEFECT = "REAL_DEFECT"
+    ENVIRONMENT_FAILURE = "ENVIRONMENT_FAILURE"
+    BLOCKED = "BLOCKED"
+
+
+class TestFailureInfo(BaseModel):
+    """Normalized, structured representation of a Playwright test failure."""
+    __test__ = False
+    test_id: str = Field(..., description="Test inventory ID")
+    test_name: str = Field(..., description="Human-readable test name")
+    test_file: str = Field(..., description="Test file path relative to repo root")
+    status: str = Field(default="failed", description="Test status: passed | failed | timedOut | skipped")
+    duration_ms: int = Field(default=0, description="Test execution duration in milliseconds")
+    error_message: str = Field(default="", description="Primary error message")
+    stack_trace: str = Field(default="", description="Stack trace if available")
+    expected_value: Optional[str] = Field(default=None, description="Expected value in assertion")
+    actual_value: Optional[str] = Field(default=None, description="Actual value in assertion")
+    locator_used: Optional[str] = Field(default=None, description="Playwright locator that failed, if identifiable")
+    screenshot_path: Optional[str] = Field(default=None, description="Path to failure screenshot")
+    trace_path: Optional[str] = Field(default=None, description="Path to Playwright trace")
+    test_source_snippet: Optional[str] = Field(default=None, description="Relevant source lines around failure")
+    url: Optional[str] = Field(default=None, description="URL when failure occurred")
+    browser: str = Field(default="chromium", description="Browser used")
+    stdout: str = Field(default="", description="Captured stdout")
+    stderr: str = Field(default="", description="Captured stderr")
+    failure_line: Optional[int] = Field(default=None, description="Line number of failure in test file")
+
+
+class RepairTarget(BaseModel):
+    """Location and content of a proposed repair in a test file."""
+    __test__ = False
+    file: str = Field(..., description="Test file path")
+    line: Optional[int] = Field(default=None, description="Line number of the broken locator/assertion")
+    old_locator: str = Field(..., description="Current (broken) locator or assertion")
+    new_locator: str = Field(..., description="Proposed replacement locator or assertion")
+
+
+class DiagnosisResult(BaseModel):
+    """Structured AI diagnosis of a test failure."""
+    __test__ = False
+    test_id: str = Field(..., description="Test inventory ID")
+    test_file: str = Field(..., description="Test file path")
+    classification: FailureClassification = Field(..., description="Root cause classification")
+    confidence: float = Field(..., ge=0.0, le=1.0, description="AI confidence in classification")
+    summary: str = Field(..., description="Human-readable diagnosis summary")
+    evidence: List[str] = Field(default_factory=list, description="Evidence list supporting the classification")
+    business_behavior_changed: bool = Field(default=False, description="Whether application business behavior actually changed")
+    recommended_action: str = Field(default="INVESTIGATE", description="REPAIR_TEST | RAISE_BUG | INVESTIGATE | RETRY")
+    repair_target: Optional[RepairTarget] = Field(default=None, description="Repair target if classification is TEST_DRIFT")
+    provider_used: Optional[str] = Field(default=None, description="LLM provider used for diagnosis")
+
+
+class RepairProposal(BaseModel):
+    """Proposed minimal patch to a test file."""
+    __test__ = False
+    file: str = Field(..., description="Test file path")
+    old_code: str = Field(..., description="Code to be replaced")
+    new_code: str = Field(..., description="Replacement code")
+    reason: str = Field(..., description="Human-readable justification for the patch")
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence in the repair")
+
+
+class ValidationResult(BaseModel):
+    """Result of patch pre-application validation."""
+    __test__ = False
+    valid: bool = Field(..., description="Whether the patch passed all validation checks")
+    checks_passed: List[str] = Field(default_factory=list, description="List of passed validation checks")
+    checks_failed: List[str] = Field(default_factory=list, description="List of failed validation checks")
+    reason: str = Field(default="", description="Human-readable validation outcome")
+
+
+class HealingAttempt(BaseModel):
+    """Record of a single healing attempt."""
+    __test__ = False
+    attempt_number: int = Field(..., description="Attempt index (1-based)")
+    proposal: RepairProposal = Field(..., description="Patch proposal used in this attempt")
+    validation: ValidationResult = Field(..., description="Pre-application validation result")
+    applied: bool = Field(default=False, description="Whether the patch was physically applied")
+    rerun_passed: bool = Field(default=False, description="Whether the repaired test passed on re-run")
+    backup_path: Optional[str] = Field(default=None, description="Path to original test backup")
+
+
+class HealingResult(BaseModel):
+    """Complete self-healing lifecycle result for one test."""
+    __test__ = False
+    test_id: str = Field(..., description="Test inventory ID")
+    test_file: str = Field(..., description="Test file path")
+    status: HealingStatus = Field(..., description="Final healing outcome")
+    failure_classification: FailureClassification = Field(..., description="Failure type that triggered healing")
+    confidence: float = Field(default=0.0, description="Confidence of diagnosis")
+    attempts: List[HealingAttempt] = Field(default_factory=list, description="History of healing attempts")
+    original_locator: Optional[str] = Field(default=None, description="Original broken locator")
+    replacement_locator: Optional[str] = Field(default=None, description="Replacement locator used")
+    file_changed: Optional[str] = Field(default=None, description="File that was modified")
+    healing_mode: str = Field(default="AUTO", description="AUTO | PROPOSE_ONLY")
+    reason: str = Field(default="", description="Human-readable outcome explanation")
+
+
+class TestExecutionResult(BaseModel):
+    """Result of executing a single test file."""
+    __test__ = False
+    test_id: str = Field(..., description="Test inventory ID")
+    test_file: str = Field(..., description="Test file path")
+    test_name: str = Field(..., description="Test name")
+    status: str = Field(..., description="passed | failed | timedOut | skipped")
+    duration_ms: int = Field(default=0, description="Execution duration in milliseconds")
+    failure: Optional[TestFailureInfo] = Field(default=None, description="Failure details if status is failed")
+    stdout: str = Field(default="", description="Captured stdout")
+    stderr: str = Field(default="", description="Captured stderr")
+    screenshot_path: Optional[str] = Field(default=None, description="Screenshot path for failures")
+    trace_path: Optional[str] = Field(default=None, description="Trace path for failures")
+
+
+class QualityReport(BaseModel):
+    """Final structured quality report for an autonomous QA run."""
+    __test__ = False
+    run_id: str = Field(..., description="Unique run identifier")
+    timestamp: str = Field(..., description="ISO 8601 timestamp")
+    status: QualityStatus = Field(..., description="Overall run status")
+    changed_files: int = Field(default=0, description="Number of changed files")
+    selected_tests: int = Field(default=0, description="Number of tests selected")
+    skipped_tests: int = Field(default=0, description="Number of tests skipped")
+    passed: int = Field(default=0, description="Tests that passed")
+    failed: int = Field(default=0, description="Tests that failed after all healing")
+    healed: int = Field(default=0, description="Tests successfully healed")
+    real_defects: int = Field(default=0, description="Tests classified as PRODUCT_DEFECT")
+    environment_failures: int = Field(default=0, description="Tests classified as ENVIRONMENT_FAILURE")
+    unknown_failures: int = Field(default=0, description="Tests with UNKNOWN classification")
+    release_confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="Release confidence score")
+    summary: str = Field(default="", description="Human-readable run summary")
+
+
+class AutonomousRunResult(BaseModel):
+    """Complete output of the Increment 4 autonomous QA pipeline."""
+    __test__ = False
+    run_id: str = Field(..., description="Unique run identifier")
+    impact: ImpactAnalysisResult = Field(..., description="Impact analysis")
+    selected_tests: List[SelectedTest] = Field(default_factory=list)
+    skipped_tests: List[SkippedTest] = Field(default_factory=list)
+    execution_results: List[TestExecutionResult] = Field(default_factory=list)
+    diagnosis_results: List[DiagnosisResult] = Field(default_factory=list)
+    healing_results: List[HealingResult] = Field(default_factory=list)
+    quality_report: QualityReport = Field(..., description="Final quality verdict")

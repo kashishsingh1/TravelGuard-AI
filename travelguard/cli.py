@@ -21,9 +21,10 @@ _backend_dir = _repo_root / "backend"
 if str(_backend_dir) not in sys.path:
     sys.path.insert(0, str(_backend_dir))
 
+from travelguard.autonomous_pipeline import AutonomousQAEngine
 from travelguard.change_detector import ChangeDetector, GitCommitDiffSource, GitWorkingTreeSource, FixtureChangeSource
-from travelguard.demo import DEMO_SCENARIOS, load_scenario_diff
-from travelguard.models import ChangeSet, TestIntelligenceResult
+from travelguard.demo import DEMO_SCENARIOS, create_demo_execution_results, load_scenario_diff, run_demo_scenario
+from travelguard.models import AutonomousRunResult, ChangeSet, TestIntelligenceResult
 from travelguard.pipeline import TestIntelligencePipeline
 from travelguard.registry import get_journey_registry
 from travelguard.test_inventory import get_test_inventory
@@ -250,6 +251,121 @@ def handle_demo_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def _format_autonomous_report(result: AutonomousRunResult) -> str:
+    """Format the Increment 4 autonomous run result as a terminal report."""
+    divider = "=" * 60
+    sub = "-" * 60
+    qr = result.quality_report
+
+    status_emoji = {
+        "PASS": "[PASS]",
+        "PASS_WITH_HEALING": "[HEALED]",
+        "FAIL": "[FAIL]",
+        "REAL_DEFECT": "[DEFECT]",
+        "ENVIRONMENT_FAILURE": "[ENV FAIL]",
+        "BLOCKED": "[BLOCKED]",
+    }.get(qr.status.value, "[?]")
+
+    lines = [
+        divider,
+        "TRAVELGUARD AI — AUTONOMOUS QA REPORT",
+        f"Run ID  : {qr.run_id}",
+        f"Status  : {status_emoji} {qr.status.value}",
+        f"Confidence: {int(qr.release_confidence * 100)}%",
+        divider,
+        "",
+        sub,
+        "TEST EXECUTION SUMMARY",
+        sub,
+        f"  Selected : {qr.selected_tests}",
+        f"  Skipped  : {qr.skipped_tests}",
+        f"  Passed   : {qr.passed}",
+        f"  Failed   : {qr.failed}",
+        f"  Healed   : {qr.healed}",
+        "",
+    ]
+
+    if result.diagnosis_results:
+        lines += [sub, "FAILURE DIAGNOSIS", sub]
+        for d in result.diagnosis_results:
+            lines.append(f"  Test     : {d.test_id}")
+            lines.append(f"  Class    : {d.classification.value} (conf={d.confidence:.0%})")
+            lines.append(f"  Summary  : {d.summary}")
+            lines.append(f"  Action   : {d.recommended_action}")
+            lines.append("")
+
+    if result.healing_results:
+        lines += [sub, "SELF-HEALING OUTCOME", sub]
+        for h in result.healing_results:
+            lines.append(f"  Test     : {h.test_id}")
+            lines.append(f"  Status   : {h.status.value}")
+            lines.append(f"  Reason   : {h.reason}")
+            if h.original_locator:
+                lines.append(f"  Old      : {h.original_locator}")
+            if h.replacement_locator:
+                lines.append(f"  New      : {h.replacement_locator}")
+            lines.append("")
+
+    lines += [
+        sub,
+        "VERDICT",
+        sub,
+        f"  {qr.summary}",
+        "",
+        divider,
+    ]
+    return "\n".join(lines)
+
+
+async def handle_autonomous_demo(args: argparse.Namespace) -> int:
+    """Execute the Increment 4 Autonomous QA pipeline for a demo scenario."""
+    scenario_key = args.demo
+    scenario = DEMO_SCENARIOS.get(scenario_key) or DEMO_SCENARIOS.get(scenario_key.replace("_", "-"))
+    if not scenario:
+        print(f"Error: Unknown scenario '{scenario_key}'", file=sys.stderr)
+        print(f"Available: {list(DEMO_SCENARIOS.keys())}", file=sys.stderr)
+        return 1
+
+    print(f"\n[TravelGuard] Autonomous QA Demo — {scenario['name']}")
+    print(f"[TravelGuard] Loading fixture: {scenario['fixture_file']}")
+
+    # Load change set from fixture
+    from travelguard.change_detector import ChangeDetector, FixtureChangeSource
+    raw_diff = load_scenario_diff(scenario_key)
+    source = FixtureChangeSource(raw_diff=raw_diff, fixture_name=scenario["name"])
+    detector = ChangeDetector(source=source)
+    change_set = detector.get_change_set()
+
+    # Create deterministic execution results for demo
+    demo_exec_results = create_demo_execution_results(scenario_key)
+
+    engine = AutonomousQAEngine()
+    mock_impact = scenario.get("mock_response") if args.mock_llm else None
+
+    try:
+        result = await engine.run(
+            change_set=change_set,
+            mock_impact=mock_impact,
+            demo_execution_results=demo_exec_results,
+        )
+    except Exception as exc:
+        print(f"[TravelGuard Error] Autonomous pipeline failed: {exc}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        return 1
+
+    if args.json:
+        print(json.dumps(result.model_dump(), indent=2))
+    else:
+        print("\n" + _format_autonomous_report(result) + "\n")
+
+    # Return non-zero exit code when a real defect is detected
+    qr = result.quality_report
+    if qr.real_defects > 0:
+        return 2
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Construct CLI argument parser."""
     parser = argparse.ArgumentParser(
@@ -295,6 +411,31 @@ def build_parser() -> argparse.ArgumentParser:
     # Command: demo
     subparsers.add_parser("demo", help="List available hackathon demo scenarios")
 
+    # Command: autonomous-demo
+    auto_parser = subparsers.add_parser(
+        "autonomous-demo",
+        help="Run the full Increment 4 autonomous QA pipeline for a demo scenario",
+    )
+    auto_parser.add_argument(
+        "--demo",
+        "-d",
+        type=str,
+        required=True,
+        choices=["booking-ui-drift", "booking-api-defect", "environment-failure",
+                 "booking_ui_drift", "booking_api_defect", "environment_failure"],
+        help="Demo scenario to run: booking-ui-drift | booking-api-defect | environment-failure",
+    )
+    auto_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output raw JSON instead of formatted report",
+    )
+    auto_parser.add_argument(
+        "--mock-llm",
+        action="store_true",
+        help="Use deterministic mock LLM responses (offline/CI mode)",
+    )
+
     return parser
 
 
@@ -312,6 +453,8 @@ def main() -> None:
 
     if args.command == "analyze":
         exit_code = asyncio.run(handle_analyze(args))
+    elif args.command == "autonomous-demo":
+        exit_code = asyncio.run(handle_autonomous_demo(args))
     elif args.command == "journeys":
         exit_code = handle_journeys(args)
     elif args.command == "test-inventory":

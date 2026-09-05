@@ -1,0 +1,16 @@
+diff --git a/frontend/src/components/PassengerForm.tsx b/frontend/src/components/PassengerForm.tsx
+index 518ab89..c91ae88 100644
+--- a/frontend/src/components/PassengerForm.tsx
++++ b/frontend/src/components/PassengerForm.tsx
+@@ -171,8 +171,8 @@ export const PassengerForm: React.FC<PassengerFormProps> = ({
+             <div className="passenger-submit-row">
+               <button
+                 type="submit"
+-                data-testid="book-flight"
++                data-testid="reserve-flight"
+                 className="btn btn-primary btn-large book-flight-btn"
+                 disabled={isLoading}
+               >
+-                {isLoading ? 'Processing Booking...' : 'Reserve Flight'}
++                {isLoading ? 'Processing Booking...' : 'Reserve Flight'}
+               </button>
