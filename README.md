@@ -1,459 +1,354 @@
-# TravelGuard AI — Autonomous QA Platform
+# TravelGuard AI
+
+> **Autonomous QA Platform — From Code Commit to Release Gate, Powered by LLMs**
+
+TravelGuard AI is an end-to-end autonomous quality engineering platform that detects code changes, maps them to business-critical user journeys, intelligently selects and executes tests, diagnoses failures, self-heals brittle locators, and enforces a mathematical release confidence gate — all without human intervention.
 
 ---
 
-### 1. What TravelGuard AI Is
-**TravelGuard AI** is an **Autonomous Quality Engineer for the AI Development Era**. It bridges the gap between code-level commits, runtime browser execution, failure diagnosis, verified self-healing, and enterprise release gating:
-- Detects what changed across the repository (working tree, git commit ranges, or CI PR diffs).
-- Translates file changes into affected **Business User Journeys** (Flight Search, Flight Selection, Passenger Details, Flight Booking & Confirmation).
-- Employs a resilient 3-tier LLM hierarchy (**Groq** primary $\to$ **OpenRouter** fallback 1 $\to$ **Gemini** fallback 2) with zero secret leakage via the **Secret Scrubber**.
-- Computes a transparent, explainable **Risk Score (0–100)** and risk tier (**LOW, MEDIUM, HIGH, CRITICAL**).
-- Maintains a machine-readable **Test Inventory** (`travelguard/test_inventory.yaml`).
-- **Intelligently selects** tests into prioritized tiers (**P0, P1, P2**) with transparent accounting of skipped tests.
-- Detects **Coverage Gaps** and **generates candidate Playwright tests** (`tests/generated/`) with static QA validation.
-- **Autonomously executes tests** using Playwright / Pytest runners with real-time browser inspection via a genuine **Model Context Protocol (MCP)** server.
-- Accurately diagnoses failures into **`TEST_DRIFT`**, **`PRODUCT_DEFECT`**, or **`ENVIRONMENT_FAILURE`**.
-- **Self-heals** brittle locators safely (backup created, confidence gated >= 0.70, re-validated) while strictly refusing to heal real product bugs.
-- Mathematically quantifies **Release Confidence (0–100%)** with an explicit audit formula and discount accounting.
-- Enforces deterministic **CI/CD Quality Gates** with standardized exit codes (`0` = Pass, `2` = Defect, `3` = Env Failure, `4` = Unknown).
-- Emits **Prometheus Metrics** (`/api/metrics`) and **OpenTelemetry Traces** with a ready-to-use Grafana dashboard.
+## The Problem
+
+Modern travel applications ship fast, but QA does not scale. Traditional test suites are:
+- **Slow** — engineers run everything, even when only a button changed.
+- **Fragile** — UI locators drift, causing false failures that block releases.
+- **Blind** — no system connects a code commit to its business-level risk.
+
+Teams are left manually triaging test failures instead of shipping features.
 
 ---
 
-### 2. The Controlled System Under Test: SkyBook
-**SkyBook** is a lightweight, fully functional travel booking web application that serves as the controlled **System Under Test (SUT)**. It implements a sequential 5-stage travel workflow:
+## The Solution
 
-$$\text{Flight Search} \longrightarrow \text{Flight Results} \longrightarrow \text{Select Flight} \longrightarrow \text{Passenger Details} \longrightarrow \text{Book Flight} \longrightarrow \text{Booking Confirmation}$$
+TravelGuard AI acts as an **autonomous QA engineer** embedded directly in the developer workflow. It answers three questions automatically:
 
----
-
-### 3. Interactive Developer Console (Web Dashboard)
-
-While developers work on any travel application locally, they can launch and interact with the **TravelGuard AI Developer Console** in their browser at `http://localhost:5173`:
-
-- **Seamless Dual-Mode**: Switch between the customer-facing **SkyBook Booking App** and the **TravelGuard Dev Console** via the top header toggle or the floating quick launcher.
-- **One-Click Autonomous Demo Triggers**:
-  - **Scenario A**: Booking UI Drift & Self-Healing (`TEST_DRIFT` &rarr; `RELEASE ALLOWED`)
-  - **Scenario B**: Booking API Defect (`PRODUCT_DEFECT` &rarr; `RELEASE BLOCKED`)
-  - **Scenario C**: Environment Failure (`ENVIRONMENT_FAILURE` &rarr; `RELEASE BLOCKED`)
-  - **Scenario D**: Promo Code Feature & Test Gen (`COVERAGE GAP` &rarr; `Playwright Gen`)
-  - **Live Local Git Changes**: Real-time analysis of uncommitted local working tree diffs.
-- **7-Stage Visual Pipeline Stepper**: Live animated stage pills (Change Detect &rarr; Journey Mapping &rarr; Test Selection &rarr; Execution &rarr; AI Diagnosis &rarr; Self-Healing &rarr; Release Gate).
-- **Executive Release Verdict Banner**: Glowing emerald banner for `RELEASE ALLOWED` and vibrant rose for `RELEASE BLOCKED` with exact exit code and confidence percentage.
-- **Visual Self-Healing Inspector**: Interactive diff viewer displaying `- Old Locator` &rarr; `+ Repaired Locator`, patch status, and automated re-validation results.
-- **AI Test Generator Playground**: Displays generated Playwright TypeScript tests with line numbers and a 1-click **Copy Code** button.
+1. **What changed, and does it matter?** — AI-powered risk scoring mapped to real business journeys.
+2. **Which tests should run?** — Intelligent P0/P1/P2 prioritization with full accounting.
+3. **Can we ship?** — Mathematical release confidence score and a CI/CD quality gate with standard exit codes.
 
 ---
 
-### 4. Architecture & Intelligence Pipeline
+## Core Features
 
+### Change Intelligence
+- Detects diffs from git working tree, commit ranges, or CI pull requests.
+- Maps file-level changes to **Business User Journeys** (Flight Search, Flight Selection, Passenger Details, Booking and Confirmation).
+- Computes a transparent **Risk Score (0-100)** with an explainable risk tier: `LOW · MEDIUM · HIGH · CRITICAL`.
+
+### Intelligent Test Orchestration
+- Selects tests into prioritized tiers (**P0**, **P1**, **P2**) from a machine-readable test inventory.
+- Detects **coverage gaps** and automatically generates candidate Playwright tests with static QA validation.
+- Executes Playwright (E2E) and Pytest (API) suites with real-time browser inspection via a genuine **Model Context Protocol (MCP)** server.
+
+### Autonomous Failure Diagnosis and Self-Healing
+- Classifies every failure into exactly one root cause:
+  - `TEST_DRIFT` — brittle locator, not a product bug.
+  - `PRODUCT_DEFECT` — real regression; triggers a structured bug report.
+  - `ENVIRONMENT_FAILURE` — infra/network issue; release blocked pending investigation.
+- **Self-heals** `TEST_DRIFT` failures (confidence-gated >= 0.70, safe backup created, re-validated). Strictly refuses to mask real product bugs.
+
+### Mathematical Release Confidence and Quality Gate
+- Computes a **Release Confidence Score (0-100%)** with an explicit audit formula.
+- Enforces a deterministic CI/CD quality gate with standard exit codes:
+
+| Exit Code | Verdict | Meaning |
+|-----------|---------|---------|
+| `0` | `RELEASE ALLOWED` | All tests passed or healed with confidence >= 85% |
+| `2` | `RELEASE BLOCKED` | Real product defect detected |
+| `3` | `RELEASE BLOCKED` | Environment / infrastructure failure |
+| `4` | `RELEASE BLOCKED` | Unclassified or low-confidence failure |
+
+### Resilient 3-Tier LLM Hierarchy
+All AI reasoning flows through an observable fallback router with zero secret leakage:
+
+| Tier | Provider | Role |
+|------|----------|------|
+| **Primary** | Groq | Ultra-fast primary reasoning |
+| **Fallback 1** | OpenRouter | Secondary provider |
+| **Fallback 2** | Gemini | High-capacity tertiary fallback |
+
+### Production Observability
+- Prometheus metrics exposed at `GET /api/metrics` (runs, gate decisions, confidence scores, heals, defects).
+- OpenTelemetry distributed tracing.
+- Pre-configured Grafana dashboard (`observability/grafana/dashboard.json`).
+
+---
+
+## Interactive Developer Console
+
+A full-featured web dashboard at `http://localhost:5173` lets developers interact with TravelGuard AI in real time:
+
+- **One-click scenario triggers** — run pre-built demos covering UI drift, API defects, environment failures, and new feature coverage gaps.
+- **Live Pre-Commit Check** — analyzes uncommitted local git changes instantly.
+- **7-stage visual pipeline stepper** — animated live progress through every autonomous stage.
+- **In-console test runner** — execute individual tests with live pass/fail badges directly from the UI.
+- **Full autonomous pipeline (Stages 4-7)** — trigger test execution, diagnosis, self-healing, and release gating from a single button click.
+- **Visual self-healing diff viewer** — see old locator replaced by repaired locator with re-validation status.
+- **AI test generator playground** — browse generated Playwright TypeScript tests with a 1-click copy button.
+- **Release verdict banner** — glowing emerald for `RELEASE ALLOWED`, vibrant rose for `RELEASE BLOCKED`.
+
+---
+
+## Architecture
+
+### Autonomous 7-Stage Pipeline
+
+```mermaid
+flowchart TD
+    A([Git Working Tree / Commits / PRs]) --> B
+
+    B[Stage 1 — Change Detection\nChangeDetector]
+    B --> C[Stage 2 — Journey Mapping\nJourneyMapper]
+    C --> D[Stage 3 — AI Risk Scoring\nGroq to OpenRouter to Gemini]
+    D --> E[Test Intelligence Pipeline]
+
+    E --> F[TestSelector\nP0 / P1 / P2 Prioritization]
+    E --> G[CoverageAnalyzer\nGap Detection vs Test Inventory]
+    G -->|INSUFFICIENT| H[AITestGenerator\nPlaywright TypeScript + Static Validation]
+
+    F --> I
+    H --> I
+
+    I[Stage 4 — Test Execution\nPlaywright E2E + Pytest API]
+    I --> J[Stage 5 — Failure Diagnosis]
+
+    J --> TD1[TEST_DRIFT\nBrittle locator]
+    J --> PD[PRODUCT_DEFECT\nReal regression]
+    J --> EF[ENVIRONMENT_FAILURE\nInfra or network]
+
+    TD1 --> K[Stage 6 — Self-Healing\nConfidence gated at 0.70]
+
+    PD --> L
+    EF --> L
+    K --> L
+
+    L[Stage 7 — Release Gate\nReleaseConfidence + QualityGate]
+
+    L --> PASS([Exit 0 — RELEASE ALLOWED])
+    L --> BLOCK([Exit 2 or 3 — RELEASE BLOCKED])
+
+    style A fill:#1e293b,color:#94a3b8,stroke:#475569
+    style PASS fill:#064e3b,color:#6ee7b7,stroke:#059669
+    style BLOCK fill:#450a0a,color:#fca5a5,stroke:#dc2626
+    style TD1 fill:#451a03,color:#fed7aa,stroke:#ea580c
+    style PD fill:#450a0a,color:#fca5a5,stroke:#dc2626
+    style EF fill:#1c1917,color:#d6d3d1,stroke:#78716c
+    style K fill:#1e3a5f,color:#93c5fd,stroke:#3b82f6
 ```
-Git Working Tree / Commits / PRs / Preset Fixtures
-                          │
-                          ▼
-                  [ChangeDetector]
-        (Extracts unified diffs & file statuses)
-                          │
-                          ▼
-                    [ChangeSet]
-            (Normalized change data model)
-                          │
-                          ▼
-                  [JourneyMapper]
-        (Matches paths against journeys.yaml)
-                          │
-                          ▼
-                [ChangeImpactAnalyzer]
-                          │
-                          ▼
-                 [LLMService Router]
-        Primary: Groq ──(fallback)──► OpenRouter ──(fallback)──► Gemini
-                          │
-                          ▼
-               Validated Structured JSON
-                          │
-                          ▼
-                   [RiskEngine]
-        (Transparent 0–100 score calculation)
-                          │
-                          ▼
-            [TestIntelligencePipeline]
-                          │
-            ┌─────────────┴─────────────┐
-            ▼                           ▼
-  [TestSelectorEngine]         [CoverageAnalyzer]
- (P0/P1/P2 Selection &        (Gap Detection against
-  Skipped Test Accounting)       Test Inventory)
-                                        │ (If INSUFFICIENT)
-                                        ▼
-                               [AITestGenerator]
-                             (Playwright TypeScript)
-                                        │
-                                        ▼
-                                 [TestValidator]
-                            (Multi-point Static QA)
-                                        │
-                                        ▼
-                       Candidate in tests/generated/
+
+### Developer Workflow Overview
+
+```mermaid
+flowchart LR
+    DEV[Developer\nwrites code] -->|git changes| TG
+
+    TG{TravelGuard AI}
+
+    TG -->|Risk LOW| P2[Run P2 tests only]
+    TG -->|Risk HIGH| P0[Run P0 and P1 tests]
+    TG -->|Risk CRITICAL| ALL[Run full suite]
+    TG -->|Coverage gap| GEN[Generate new test]
+
+    P2 --> GATE
+    P0 --> GATE
+    ALL --> GATE
+    GEN --> GATE
+
+    GATE{Release Gate}
+
+    GATE -->|Confidence >= 85%| SHIP([Ship It])
+    GATE -->|Defect found| BLOCK([Block Release])
+    GATE -->|Locator drift| HEAL[Auto-Heal and Re-run]
+    HEAL --> GATE
+
+    style SHIP fill:#064e3b,color:#6ee7b7,stroke:#059669
+    style BLOCK fill:#450a0a,color:#fca5a5,stroke:#dc2626
+    style TG fill:#1e3a5f,color:#93c5fd,stroke:#3b82f6
+    style GATE fill:#1e3a5f,color:#93c5fd,stroke:#3b82f6
+    style DEV fill:#1e293b,color:#94a3b8,stroke:#475569
 ```
 
 ---
 
-### 5. Resilient 3-Tier Multi-Provider LLM Hierarchy
+## Tech Stack
 
-All LLM calls flow through an observable fallback router. If any provider fails, the router immediately attempts the next tier:
-
-| Tier | Provider | Model | Environment Variable | Role |
-|---|---|---|---|---|
-| **Tier 1 (Primary)** | Groq | `openai/gpt-oss-120b` (or `openai/gpt-oss-20b`) | `GROQ_API_KEY`, `GROQ_MODEL` | Ultra-fast primary reasoning |
-| **Tier 2 (Fallback 1)** | OpenRouter | `openrouter/free` | `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | Secondary fallback provider |
-| **Tier 3 (Fallback 2)** | Gemini | `gemini-3-flash-preview` | `GEMINI_API_KEY`, `GEMINI_MODEL` | High-capacity tertiary fallback |
-
-If all three providers fail, the router returns `ALL_LLM_PROVIDERS_FAILED`.
-
-Health check endpoint: `GET /api/llm/health` reports status across all 3 tiers without leaking credentials.
+| Layer | Technology |
+|-------|-----------|
+| **Backend** | Python, FastAPI, Uvicorn |
+| **Frontend** | React, TypeScript, Vite |
+| **E2E Testing** | Playwright (TypeScript) |
+| **API Testing** | Pytest |
+| **AI / LLM** | Groq, OpenRouter, Gemini (3-tier fallback) |
+| **Browser Automation** | Playwright MCP (JSON-RPC 2.0 stdio) |
+| **Observability** | Prometheus, OpenTelemetry, Grafana |
+| **CI/CD** | GitHub Actions |
 
 ---
 
-### 6. Machine-Readable Test Inventory
+## Quick Start
 
-Registered in `travelguard/test_inventory.yaml`, representing actual tests in the repository:
+### Prerequisites
+- Python 3.11+
+- Node.js 18+
+- API key for at least one LLM provider (Groq recommended)
 
-| Test ID | File | Journeys Covered | Criticality | Default Priority |
-|---|---|---|---|---|
-| `flight-booking` | `tests/e2e/booking.spec.ts` | `flight_booking`, `passenger_details` | `critical` | **P0** |
-| `booking-api` | `backend/tests/test_api.py::test_booking_success` | `flight_booking` | `critical` | **P0** |
-| `passenger-validation` | `tests/e2e/validation.spec.ts` | `passenger_details` | `high` | **P1** |
-| `flight-selection` | `tests/e2e/select-flight.spec.ts` | `flight_selection` | `high` | **P1** |
-| `flight-search` | `tests/e2e/search.spec.ts` | `flight_search` | `medium` | **P1** |
+### 1. Clone and Install
 
-CLI command to inspect the inventory:
 ```bash
-python -m travelguard test-inventory
+git clone https://github.com/your-org/TravelGuard-AI.git
+cd TravelGuard-AI
+
+# Install Python dependencies
+pip install -r requirements.txt
+
+# Install frontend dependencies
+cd frontend && npm install && cd ..
+
+# Install Playwright browsers
+npx playwright install
+```
+
+### 2. Configure Environment
+
+```bash
+cp .env.example .env
+# Edit .env and add your API keys
+```
+
+### 3. Start the Application
+
+**Backend:**
+```bash
+uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000 --reload
+```
+API at `http://localhost:8000` | Docs at `http://localhost:8000/docs`
+
+**Frontend:**
+```bash
+cd frontend && npm run dev
+```
+App + Developer Console at `http://localhost:5173`
+
+---
+
+## Demo Scenarios
+
+### Via Developer Console (Browser)
+Navigate to `http://localhost:5173` and open the **TravelGuard Dev Console**. Click any scenario trigger button to see the full 7-stage autonomous pipeline run live.
+
+### Via CLI
+
+```bash
+# Cosmetic UI change -> Risk: LOW, P2 selected
+python -m travelguard analyze --demo scenario_a
+
+# Booking form change -> Risk: HIGH, P0 selected
+python -m travelguard analyze --demo scenario_b
+
+# Booking API change -> Risk: CRITICAL, P0 selected
+python -m travelguard analyze --demo scenario_c
+
+# New feature (Promo Code) -> Coverage gap detected -> Playwright test generated
+python -m travelguard analyze --demo scenario_d
+
+# Analyze your actual uncommitted local changes
+python -m travelguard analyze
+
+# Machine-readable JSON output for CI integration
+python -m travelguard analyze --demo scenario_d --json
+```
+
+### Autonomous Pipeline (Full Stages 4-7)
+
+```bash
+# UI Locator Drift -> Self-Heals -> RELEASE ALLOWED (Exit Code 0)
+python -m travelguard autonomous-demo --demo booking-ui-drift --mock-llm
+
+# Backend 500 Defect -> PRODUCT_DEFECT -> RELEASE BLOCKED (Exit Code 2)
+python -m travelguard autonomous-demo --demo booking-api-defect --mock-llm
+
+# Environment Offline -> RELEASE BLOCKED (Exit Code 3)
+python -m travelguard autonomous-demo --demo environment-failure --mock-llm
 ```
 
 ---
 
-### 7. Repository Structure
+## Repository Structure
 
 ```
 TravelGuard-AI/
-├── .github/
-│   └── workflows/
-│       └── qa.yml                # CI/CD workflow with autonomous QA quality gate
-├── travelguard/                  # TravelGuard Intelligence Core (INCREMENT 5)
-│   ├── __init__.py               # Package version (v0.5.0)
-│   ├── __main__.py               # CLI runner entrypoint
-│   ├── analyzer.py               # AI change analyzer with JSON validation & LLM routing
-│   ├── autonomous_pipeline.py    # End-to-end autonomous QA engine & orchestrator
-│   ├── change_detector.py        # Git working tree, commit diff & fixture change detection
-│   ├── cli.py                    # Rich terminal report formatter & CLI parser
-│   ├── coverage_analyzer.py      # Coverage gap detection engine
-│   ├── demo.py                   # Deterministic hackathon demo runner & SUT synchronization
-│   ├── diagnosis_engine.py       # Failure diagnosis: TEST_DRIFT vs PRODUCT_DEFECT vs ENV
-│   ├── execution_engine.py       # Dual-mode Playwright/Pytest test runner
-│   ├── healing_engine.py         # Confidence-gated self-healing engine (safe backups & patch)
-│   ├── journey_mapper.py         # Deterministic journey & capability mapping
-│   ├── journeys.yaml             # Machine-readable Business Journey Registry
-│   ├── mcp_inspector.py          # MCP client interface for real-time DOM queries
-│   ├── mcp_server.py             # Genuine Playwright MCP server (JSON-RPC 2.0 stdio)
-│   ├── models.py                 # Pydantic data schemas
-│   ├── observability.py          # OpenTelemetry tracing & Prometheus metrics definitions
-│   ├── pipeline.py               # Test Intelligence Pipeline orchestrator
-│   ├── quality_gate.py           # Deterministic CI/CD release gate & standard exit codes
-│   ├── recommender.py            # Targeted test recommendation engine
-│   ├── registry.py               # Journey registry loader
-│   ├── release_confidence.py     # Mathematical release confidence scoring engine
-│   ├── risk_engine.py            # Transparent risk scoring engine (0-100)
-│   ├── security.py               # Secret scrubber redacting credentials before LLM dispatch
-│   ├── test_generator.py         # Grounded Playwright test generator
-│   ├── test_inventory.py         # Test inventory registry loader
-│   ├── test_inventory.yaml       # Machine-readable test catalog
-│   ├── test_selector.py          # Deterministic & LLM-based P0/P1/P2 test selector
-│   ├── test_validator.py         # Multi-point static Playwright test validator
-│   ├── fixtures/                 # Predefined diff fixtures for deterministic demos
-│   └── tests/                    # Comprehensive automated unit & integration tests
-├── observability/
-│   └── grafana/
-│       └── dashboard.json        # Pre-configured Grafana QA dashboard
-├── frontend/                     # SkyBook React + TypeScript + Vite SUT
-│   ├── src/
-│   │   ├── travelguard/          # TravelGuard AI Developer Console (Web Dashboard)
-│   │   │   ├── TravelGuardConsole.tsx
-│   │   │   ├── travelguard.css
-│   │   │   └── types.ts
-│   │   ├── components/           # SkyBook Booking UI components
-│   │   └── App.tsx               # Dual SUT & TravelGuard Console state
-├── backend/                      # Python FastAPI Backend
-│   ├── app/
-│   │   ├── api/                  # /api/health, /api/flights, /api/book, /api/llm, /api/metrics, /api/travelguard
-│   │   ├── llm/                  # 3-Tier Provider abstraction (Groq, OpenRouter, Gemini)
-│   │   └── main.py               # App configuration & Prometheus instrumentations
-│   └── tests/                    # Backend unit, router fallback & TravelGuard API tests
-├── tests/                        # Playwright Test Suite (TypeScript)
-├── docs/
-│   ├── increment-2.md
-│   ├── increment-3.md
-│   ├── increment-4.md
-│   └── increment-5.md            # Production CI/CD, Genuine MCP & Release Confidence
-├── pytest.ini                    # Standard pytest test discovery & pythonpath configuration
-├── .env.example                  # Template with Groq, OpenRouter, Gemini configs
-└── README.md
+├── .github/workflows/qa.yml         # CI/CD autonomous QA quality gate
+├── travelguard/                     # TravelGuard Intelligence Core
+│   ├── autonomous_pipeline.py       # End-to-end autonomous QA orchestrator
+│   ├── analyzer.py                  # AI change analyzer with LLM routing
+│   ├── change_detector.py           # Git working tree and commit diff detection
+│   ├── diagnosis_engine.py          # TEST_DRIFT / PRODUCT_DEFECT / ENV classification
+│   ├── execution_engine.py          # Playwright / Pytest dual-mode runner
+│   ├── healing_engine.py            # Confidence-gated self-healing engine
+│   ├── quality_gate.py              # Deterministic CI/CD release gate
+│   ├── release_confidence.py        # Mathematical confidence scoring engine
+│   ├── risk_engine.py               # Transparent 0-100 risk scoring
+│   ├── test_generator.py            # Grounded Playwright test generator
+│   ├── test_selector.py             # P0/P1/P2 intelligent test selector
+│   ├── mcp_server.py                # Genuine Playwright MCP server (JSON-RPC 2.0)
+│   ├── journeys.yaml                # Business Journey Registry
+│   ├── test_inventory.yaml          # Machine-readable test catalog
+│   └── tests/                       # Unit and integration test suite
+├── frontend/src/travelguard/        # Developer Console (React + TypeScript)
+├── backend/app/                     # FastAPI backend (flights, booking, LLM, metrics)
+├── tests/                           # Playwright E2E test suite
+├── observability/grafana/           # Pre-configured Grafana dashboard
+└── .env.example                     # API key configuration template
 ```
 
 ---
 
-### 8. How to Run TravelGuard CLI
-
-From the repository root:
-
-#### A. Analyze Current Working Tree or Git Commits
-```bash
-# Analyze unstaged, staged, and untracked changes in the working tree
-python -m travelguard analyze
-
-# Diff against a specific commit or branch reference
-python -m travelguard analyze --ref HEAD~1
-```
-
-#### B. Run the 4 Deterministic Hackathon Demo Scenarios
-```bash
-# Scenario A: Cosmetic UI Change (Search button styling) -> Risk: LOW, P2 Selected
-python -m travelguard analyze --demo scenario_a
-
-# Scenario B: Booking UI Change (PassengerForm submit handler) -> Risk: HIGH, P0 Selected
-python -m travelguard analyze --demo scenario_b
-
-# Scenario C: Booking API Change (/api/book payload & validation) -> Risk: CRITICAL, P0 Selected
-python -m travelguard analyze --demo scenario_c
-
-# Scenario D: New Feature (Promo Code) -> Gap Detected -> Generates & Statically Validates Test!
-python -m travelguard analyze --demo scenario_d
-
-# Emit machine-readable JSON for CI integration
-python -m travelguard analyze --demo scenario_d --json
-
-# Offline verification mode (deterministic mock LLM)
-python -m travelguard analyze --demo scenario_d --mock-llm
-```
-
-#### C. Inspect Test Inventory and Business Journeys
-```bash
-# View all registered tests with priorities and journey tags
-python -m travelguard test-inventory
-
-# View all registered business user journeys
-python -m travelguard journeys
-
-# List available demo scenarios
-python -m travelguard demo
-```
-
----
-
-### 9. Example Analysis Output (Scenario D: New Feature)
-
-```
-==================================================
-TRAVELGUARD AI
-INTELLIGENT TEST SELECTION & AI GENERATION
-==================================================
-
-Changed Files:
-  M frontend/src/components/PassengerForm.tsx
-
---------------------------------------------------
-CHANGE SUMMARY
---------------------------------------------------
-Added promotional discount coupon input and discount calculation to passenger details checkout.
-Change Type: UI (Behavioral)
-
---------------------------------------------------
-BUSINESS IMPACT
---------------------------------------------------
-Affected Journey: Flight Booking & Confirmation
-Capability:       Promotional coupon application and checkout fare calculation
-Impact Level:     HIGH
-
-Business Impact:
-Pricing discrepancy or checkout disruption if promotional calculation fails.
-
---------------------------------------------------
-RISK ASSESSMENT
---------------------------------------------------
-Risk Level: HIGH
-Risk Score: 85/100
-Reason:     Introduces new promotional code state, coupon validation, and dynamic fare modification.
-
---------------------------------------------------
-INTELLIGENT TEST SELECTION (P0 / P1 / P2)
---------------------------------------------------
-Selected Tests (2):
-  [P0] tests/e2e/booking.spec.ts
-       Reason: Critical revenue-impacting booking flow directly modified by form changes
-  [P0] backend/tests/test_api.py::test_booking_success
-       Reason: Booking transaction API contract must be validated against passenger payload changes
-
-Skipped Tests (3):
-  [-] tests/e2e/search.spec.ts
-      Reason: Test targets flight_search, but change only impacts flight_booking
-  [-] tests/e2e/select-flight.spec.ts
-      Reason: Test targets flight_selection, but change only impacts flight_booking
-  [-] tests/e2e/validation.spec.ts
-      Reason: Existing validation does not cover new promo code capabilities
-
---------------------------------------------------
-COVERAGE GAP EVALUATION
---------------------------------------------------
-Status: INSUFFICIENT
-Reason: Code change introduces promotional code logic but no test in the inventory covers promo code application.
-Missing Scenarios:
-  - Promo code input validation and discount application
-
---------------------------------------------------
-AI-GENERATED PLAYWRIGHT TEST
---------------------------------------------------
-File:              tests/generated/promo-code.spec.ts
-Target Journey:    Flight Booking & Confirmation
-Validation Status: PASSED
-
-Static Checks Passed:
-  ✓ File written to tests/generated/
-  ✓ Playwright imports verified (@playwright/test)
-  ✓ Executable test() suite defined
-  ✓ Assertions present (expect)
-  ✓ Syntax structure balanced
-  ✓ No arbitrary sleep (page.waitForTimeout avoided)
-  ✓ AI disclaimer header present
-
---------------------------------------------------
-AI ORCHESTRATION
---------------------------------------------------
-Provider Used: Groq (openai/gpt-oss-120b)
-Confidence:    96%
-Fallback Used: No
-==================================================
-```
-
----
-
-### 10. How to Run Automated Tests
-
-Execute the complete automated test suite across all subsystems (**140 unit, intelligence & integration tests passing**):
+## Running Tests
 
 ```bash
-# Run all TravelGuard and backend tests (140 tests passing)
+# Full Python test suite (unit, intelligence and integration)
 python -m pytest
 
-# Run specific intelligence test files with verbose output
+# Specific subsystems
 python -m pytest travelguard/tests/test_autonomous_pipeline.py -v
 python -m pytest travelguard/tests/test_quality_gate.py -v
 python -m pytest travelguard/tests/test_release_confidence.py -v
-python -m pytest travelguard/tests/test_mcp_genuine.py -v
 
-# Run Playwright E2E suite
+# Playwright E2E suite
 cd tests && npx playwright test
 ```
 
 ---
 
-### 11. Autonomous QA Demo Commands (Deterministic)
+## CI/CD Integration
 
-Run fully deterministic, reproducible demo scenarios demonstrating autonomous failure classification, self-healing, and release quality gating:
+The GitHub Actions workflow (`.github/workflows/qa.yml`) runs the full autonomous quality gate on every push and pull request:
 
-```bash
-# Scenario A: UI Locator Drift -> Diagnosed as TEST_DRIFT -> Self-Heals -> Release ALLOWED
-python -m travelguard autonomous-demo --demo booking-ui-drift --mock-llm
-# Expected: Exit Code 0 | Verdict: RELEASE ALLOWED (PASS WITH HEALING)
-
-# Scenario B: Backend 500 Defect -> Diagnosed as PRODUCT_DEFECT -> Healing REJECTED -> Release BLOCKED
-python -m travelguard autonomous-demo --demo booking-api-defect --mock-llm
-# Expected: Exit Code 2 | Verdict: RELEASE BLOCKED
-
-# Scenario C: Environment Offline -> Diagnosed as ENVIRONMENT_FAILURE -> Release BLOCKED
-python -m travelguard autonomous-demo --demo environment-failure --mock-llm
-# Expected: Exit Code 3 | Verdict: RELEASE BLOCKED (ENVIRONMENT FAILURE)
-```
+1. Installs dependencies and starts the SUT (SkyBook).
+2. Executes `python -m travelguard autonomous-run --quality-gate`.
+3. Fails the pipeline on exit code `2`, `3`, or `4`.
+4. Archives quality reports and Playwright traces as build artifacts.
 
 ---
 
-### 12. CI/CD Quality Gate & Production Observability
+## Environment Variables
 
-#### A. Standardized Quality Gate Exit Codes
-The Quality Gate (`travelguard/quality_gate.py`) returns standard exit codes for seamless CI/CD integration:
-- **`0`**: `RELEASE ALLOWED` (Suite passed or healed with confidence $\ge 0.85$)
-- **`2`**: `RELEASE BLOCKED` (Real product defect detected; bug report generated)
-- **`3`**: `RELEASE BLOCKED` (Environment / infrastructure failure detected)
-- **`4`**: `RELEASE BLOCKED` (Unclassified or low-confidence failure)
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `GROQ_API_KEY` | Groq API key (primary LLM) | Yes (or any one provider) |
+| `GROQ_MODEL` | Groq model override | No |
+| `OPENROUTER_API_KEY` | OpenRouter API key (Fallback 1) | No |
+| `OPENROUTER_MODEL` | OpenRouter model override | No |
+| `GEMINI_API_KEY` | Gemini API key (Fallback 2) | No |
+| `GEMINI_MODEL` | Gemini model override | No |
 
-Run on any branch or pull request:
-```bash
-python -m travelguard autonomous-run --quality-gate
-```
-
-#### B. Prometheus Metrics & Grafana Dashboard
-- Prometheus metrics are exposed at `GET /api/metrics` via FastAPI.
-- Tracked metrics:
-  - `travelguard_runs_total` (counter partitioned by status)
-  - `travelguard_quality_gate_decision_total` (ALLOW_RELEASE vs BLOCK_RELEASE)
-  - `travelguard_release_confidence` (gauge)
-  - `travelguard_tests_healed_total` (counter)
-  - `travelguard_defects_detected_total` (counter)
-- Pre-configured Grafana dashboard JSON available at `observability/grafana/dashboard.json`.
-
-#### C. GitHub Actions CI/CD Pipeline
-- Automated quality gate workflow configured in `.github/workflows/qa.yml`.
-- Runs full test suite, launches SUT, executes `travelguard autonomous-run --quality-gate`, and archives quality reports.
+Health check: `GET /api/llm/health` reports all provider statuses without exposing credentials.
 
 ---
 
-### 13. How to Start the SkyBook Application
+## Built For
 
-#### Start Backend
-```bash
-uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000 --reload
-```
-Backend runs at `http://localhost:8000` (API docs at `http://localhost:8000/docs`, metrics at `http://localhost:8000/api/metrics`).
-
-#### Start Frontend
-```bash
-cd frontend
-npm run dev
-```
-SkyBook frontend opens at `http://localhost:5173`.
+**Amadeus Hackathon** — demonstrating how AI can autonomously close the gap between development velocity and software quality in the travel industry.
 
 ---
 
-### 14. Incremental Roadmap
-
-```
-Git / Application Changes
-        ↓
-Change Detection       ← COMPLETED (Increment 2)
-        ↓
-Business Impact        ← COMPLETED (Increment 2)
-        ↓
-Risk Analysis          ← COMPLETED (Increment 2)
-        ↓
-Test Selection         ← COMPLETED (Increment 3)
-        ↓
-Test Generation        ← COMPLETED (Increment 3)
-        ↓
-Static QA Validation   ← COMPLETED (Increment 3)
-        ↓
-Test Execution         ← COMPLETED (Increment 4)
-        ↓
-Failure Diagnosis      ← COMPLETED (Increment 4)
-        ↓
-Self-Healing           ← COMPLETED (Increment 4)
-        ↓
-Defect Analysis        ← COMPLETED (Increment 5)
-        ↓
-Genuine Playwright MCP ← COMPLETED (Increment 5)
-        ↓
-Release Confidence     ← COMPLETED (Increment 5)
-        ↓
-CI/CD Quality Gate     ← COMPLETED (Increment 5)
-```
-
-
+*TravelGuard AI — Ship with confidence, not with fingers crossed.*
