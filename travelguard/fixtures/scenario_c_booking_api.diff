@@ -1,0 +1,14 @@
+diff --git a/backend/app/api/booking.py b/backend/app/api/booking.py
+index af83210..bd89412 100644
+--- a/backend/app/api/booking.py
++++ b/backend/app/api/booking.py
+@@ -35,8 +35,12 @@ async def create_booking(payload: BookingRequest):
+-    booking_id = f"SKB-{uuid.uuid4().hex[:8].upper()}"
++    # Altered booking confirmation generation & settlement logic
++    if not payload.passenger.full_name or len(payload.passenger.full_name.strip()) < 2:
++        raise HTTPException(status_code=400, detail="Passenger name too short")
++    booking_id = f"SKB-CONF-{uuid.uuid4().hex[:6].upper()}"
+     confirmed_at = datetime.utcnow().isoformat()
+     
+     booking_record = {
+         "booking_id": booking_id,

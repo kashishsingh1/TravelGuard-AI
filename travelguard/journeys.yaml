@@ -1,0 +1,99 @@
+journeys:
+  flight_search:
+    id: "flight_search"
+    name: "Flight Search"
+    description: "Customer searches for available flights by origin, destination, and travel date"
+    criticality: "medium"
+    workflow_stage: 1
+    components:
+      - "SearchForm"
+      - "Header"
+    frontend_paths:
+      - "frontend/src/components/SearchForm.tsx"
+      - "frontend/src/components/Header.tsx"
+    api_paths:
+      - "/api/flights"
+      - "backend/app/api/flights.py"
+    tests:
+      - "Flight Search E2E (tests/e2e/search.spec.ts)"
+      - "Flight Search API Filter (backend/tests/test_api.py::test_flights_search_filter)"
+
+  flight_selection:
+    id: "flight_selection"
+    name: "Flight Selection"
+    description: "Customer views search results and selects an available flight"
+    criticality: "medium"
+    workflow_stage: 2
+    components:
+      - "FlightResults"
+    frontend_paths:
+      - "frontend/src/components/FlightResults.tsx"
+    api_paths:
+      - "/api/flights"
+      - "backend/app/api/flights.py"
+    tests:
+      - "Flight Selection E2E (tests/e2e/select-flight.spec.ts)"
+      - "Flight Catalogue API (backend/tests/test_api.py::test_flights_catalogue)"
+
+  passenger_details:
+    id: "passenger_details"
+    name: "Passenger Details & Validation"
+    description: "Customer enters passenger details (name, email, phone) with client and server validation"
+    criticality: "high"
+    workflow_stage: 3
+    components:
+      - "PassengerForm"
+      - "ErrorBanner"
+    frontend_paths:
+      - "frontend/src/components/PassengerForm.tsx"
+      - "frontend/src/components/ErrorBanner.tsx"
+    api_paths:
+      - "/api/book"
+      - "backend/app/api/booking.py"
+    tests:
+      - "Form Validation E2E (tests/e2e/validation.spec.ts)"
+      - "Booking Validation API (backend/tests/test_api.py::test_booking_validation_failure)"
+
+  flight_booking:
+    id: "flight_booking"
+    name: "Flight Booking & Confirmation"
+    description: "Customer submits booking, receives confirmation number and summary"
+    criticality: "critical"
+    workflow_stage: 4
+    components:
+      - "PassengerForm"
+      - "Confirmation"
+      - "App"
+      - "api"
+    frontend_paths:
+      - "frontend/src/components/Confirmation.tsx"
+      - "frontend/src/components/PassengerForm.tsx"
+      - "frontend/src/App.tsx"
+      - "frontend/src/services/api.ts"
+    api_paths:
+      - "/api/book"
+      - "backend/app/api/booking.py"
+    tests:
+      - "Flight Booking E2E (tests/e2e/booking.spec.ts)"
+      - "Booking Creation API (backend/tests/test_api.py::test_booking_success)"
+
+  system_health:
+    id: "system_health"
+    name: "System & LLM Diagnostics"
+    description: "Health verification, LLM router orchestration, and provider connectivity"
+    criticality: "medium"
+    workflow_stage: 0
+    components:
+      - "HealthCheck"
+      - "LLMRouter"
+    frontend_paths: []
+    api_paths:
+      - "/api/health"
+      - "/api/llm/health"
+      - "backend/app/api/health.py"
+      - "backend/app/api/llm.py"
+      - "backend/app/llm"
+    tests:
+      - "API & LLM Health E2E (tests/e2e/api-health.spec.ts)"
+      - "Health Check API (backend/tests/test_api.py::test_health_check)"
+      - "LLM Router Unit Tests (backend/tests/test_llm.py)"

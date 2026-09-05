@@ -1,0 +1,9 @@
+diff --git a/frontend/src/components/SearchForm.tsx b/frontend/src/components/SearchForm.tsx
+index 38bfa12..49c1234 100644
+--- a/frontend/src/components/SearchForm.tsx
++++ b/frontend/src/components/SearchForm.tsx
+@@ -102,5 +102,5 @@ export const SearchForm: React.FC<SearchFormProps> = ({
+-          <button type="submit" className="search-btn" disabled={isLoading}>
++          <button type="submit" className="search-btn btn-accent shadow-sm" disabled={isLoading}>
+             {isLoading ? 'Searching...' : 'Explore Available Flights'}
+           </button>

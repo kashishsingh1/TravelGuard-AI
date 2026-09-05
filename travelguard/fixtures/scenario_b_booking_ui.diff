@@ -1,0 +1,18 @@
+diff --git a/frontend/src/components/PassengerForm.tsx b/frontend/src/components/PassengerForm.tsx
+index 518ab89..901bc33 100644
+--- a/frontend/src/components/PassengerForm.tsx
++++ b/frontend/src/components/PassengerForm.tsx
+@@ -145,9 +145,12 @@ export const PassengerForm: React.FC<PassengerFormProps> = ({
+   const handleSubmit = (e: React.FormEvent) => {
+     e.preventDefault();
+-    if (validate()) {
+-      onSubmit(formData);
++    const isValid = validate();
++    if (!isValid) {
++      return;
+     }
++    // Modified payment & booking trigger pipeline
++    onSubmit({ ...formData, timestamp: Date.now() });
+   };
+
+   return (

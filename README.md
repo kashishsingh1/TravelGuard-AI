@@ -1,52 +1,94 @@
 # TravelGuard AI — Autonomous QA Platform
-## Increment 1: SkyBook SUT & Foundation
+## Increment 2: Change Detection & Business Impact Analysis
 
 ---
 
-### 1. What SkyBook Is
-**SkyBook** is a lightweight, fully functional travel booking web application that serves as the controlled **System Under Test (SUT)** for **TravelGuard AI**. It represents a realistic travel business workflow:
+### 1. What TravelGuard AI Is
+**TravelGuard AI** is an **Autonomous QA Engineer for AI-driven travel applications**. It bridges the gap between code-level commits and high-level travel business intent:
+- Detects what changed across the repository (working tree, git commit ranges, or CI PR diffs).
+- Translates file changes into affected **Business User Journeys** (Flight Search, Flight Selection, Passenger Details, Flight Booking & Confirmation).
+- Employs resilient multi-provider LLM reasoning (**DeepSeek** primary with automatic failover to **Grok**).
+- Computes a transparent, explainable **Risk Score (0–100)** and risk tier (**LOW, MEDIUM, HIGH, CRITICAL**).
+- Recommends targeted automated tests to execute.
+- Provides reproducible, zero-mutation **Hackathon Demo Scenarios**.
+
+---
+
+### 2. The Controlled System Under Test: SkyBook
+**SkyBook** is a lightweight, fully functional travel booking web application that serves as the controlled **System Under Test (SUT)**. It implements a sequential 5-stage travel workflow:
 
 $$\text{Flight Search} \longrightarrow \text{Flight Results} \longrightarrow \text{Select Flight} \longrightarrow \text{Passenger Details} \longrightarrow \text{Book Flight} \longrightarrow \text{Booking Confirmation}$$
 
 ---
 
-### 2. What TravelGuard AI Will Eventually Become
-**TravelGuard AI** is conceived as an **Autonomous QA Engineer for AI-driven travel applications**. Across subsequent increments, TravelGuard AI will:
-1. **Detect application changes** (Git diffs, DOM updates, API changes).
-2. **Understand affected business workflows** via multi-modal intent reasoning.
-3. **Generate and prioritize tests** based on risk and critical user journeys.
-4. **Execute UI, API, security, accessibility, and performance tests**.
-5. **Self-heal broken test automation** when locators or UI flows change.
-6. **Distinguish test drift from real product defects**.
-7. **Produce explainable quality insights**.
-8. **Make informed release decisions**.
-
----
-
-### 3. Why SkyBook Exists
-Automated QA systems and self-healing algorithms cannot be reliably trained, verified, or benchmarked without a stable, reproducible, and intentionally modifiable baseline. SkyBook provides this exact testbed:
-- Consistent mock inventory and deterministic booking responses.
-- Explicit `data-testid` hooks alongside semantic, accessible HTML.
-- Known error pathways (input validation, network failure states).
-- A clean platform against which future mutations and self-healing tests will be applied.
-
----
-
-### 4. Current Increment 1 Scope
-In Increment 1, we focus solely on building the **foundation**:
-- [x] Working SkyBook frontend (React + TypeScript + Vite).
-- [x] Simple FastAPI backend with deterministic endpoints (`/api/flights`, `/api/book`, `/api/health`).
-- [x] Baseline Playwright E2E test suite (Search, Select, Book, Validation, API Health).
-- [x] Multi-provider LLM abstraction (Primary: DeepSeek, Fallback: Groq).
-- [x] Observable fallback logging and LLM diagnostic endpoint (`/api/llm/health`).
-- [x] Zero advanced autonomous features yet (no AI drift, no auto-repair, no premature complexity).
-
----
-
-### 5. System Architecture
+### 3. Architecture & Intelligence Pipeline
 
 ```
-amadeus_hack/
+Git Working Tree / Commits / PRs / Preset Fixtures
+                          │
+                          ▼
+                  [ChangeDetector]
+        (Extracts unified diffs & file statuses)
+                          │
+                          ▼
+                    [ChangeSet]
+            (Normalized change data model)
+                          │
+                          ▼
+                  [JourneyMapper]
+        (Matches paths against journeys.yaml)
+                          │
+            ┌─────────────┴─────────────┐
+            ▼                           ▼
+     Known Journeys              Candidate Tests
+            │                           │
+            └─────────────┬─────────────┘
+                          ▼
+                [ChangeImpactAnalyzer]
+                          │
+                          ▼
+                 [LLMService Router]
+         Primary: DeepSeek ──(fallback)──► Grok
+                          │
+                          ▼
+               Validated Structured JSON
+                          │
+                          ▼
+                   [RiskEngine]
+        (Transparent 0–100 score calculation)
+                          │
+                          ▼
+                [TestRecommender]
+        (Prioritizes E2E and API test suites)
+                          │
+                          ▼
+            [CLI Report & Impact Result]
+```
+
+---
+
+### 4. Repository Structure
+
+```
+TravelGuard-AI/
+├── travelguard/                  # TravelGuard Intelligence Core (INCREMENT 2)
+│   ├── __init__.py               # Package version (v0.2.0)
+│   ├── __main__.py               # CLI runner entrypoint
+│   ├── analyzer.py               # AI change analyzer with JSON validation & LLM routing
+│   ├── change_detector.py        # Git working tree, commit diff & fixture change detection
+│   ├── cli.py                    # Terminal report formatter & argument parsing
+│   ├── demo.py                   # Deterministic hackathon demo scenario runner
+│   ├── journey_mapper.py         # Deterministic journey & capability mapping
+│   ├── journeys.yaml             # Machine-readable Business Journey Registry
+│   ├── models.py                 # Pydantic schemas (ChangeSet, FileChange, ImpactResult)
+│   ├── recommender.py            # Targeted test recommendation engine
+│   ├── registry.py               # Journey registry loader & query interface
+│   ├── risk_engine.py            # Transparent risk scoring engine (0-100)
+│   ├── fixtures/                 # Predefined diff fixtures for deterministic demos
+│   │   ├── scenario_a_cosmetic_ui.diff
+│   │   ├── scenario_b_booking_ui.diff
+│   │   └── scenario_c_booking_api.diff
+│   └── tests/                    # 36 automated unit & integration tests
 ├── frontend/                     # SkyBook React + TypeScript + Vite SUT
 │   ├── src/
 │   │   ├── components/           # Header, SearchForm, FlightResults, PassengerForm, Confirmation
@@ -59,7 +101,7 @@ amadeus_hack/
 ├── backend/                      # Python FastAPI Backend
 │   ├── app/
 │   │   ├── api/                  # /api/health, /api/flights, /api/book, /api/llm
-│   │   ├── llm/                  # Provider abstraction (DeepSeek, Groq, Router)
+│   │   ├── llm/                  # Provider abstraction (DeepSeek, Grok, Router)
 │   │   ├── models/               # Pydantic data schemas
 │   │   ├── config.py             # Pydantic Settings reading .env
 │   │   └── main.py               # App configuration & CORS middleware
@@ -74,6 +116,8 @@ amadeus_hack/
 │   │   └── api-health.spec.ts    # TEST 5: API & LLM health validation
 │   ├── playwright.config.ts
 │   └── package.json
+├── docs/
+│   └── increment-2.md            # In-depth architectural design document
 ├── .env.example                  # Environment configuration template
 ├── .gitignore                    # Secrets and build ignore rules
 └── README.md
@@ -81,176 +125,236 @@ amadeus_hack/
 
 ---
 
-### 6. How to Install Dependencies
+### 5. Machine-Readable Business Journey Registry
 
-#### Prerequisites
-- Node.js `>= 18` (v20+ recommended)
-- Python `>= 3.10` (Python 3.13 tested)
-- npm `>= 9`
+Defined in `travelguard/journeys.yaml`:
 
-#### 1. Setup Backend
+| Stage | Journey ID | Name | Criticality | Components / Routes | Candidate Tests |
+|---|---|---|---|---|---|
+| 0 | `system_health` | System & LLM Diagnostics | MEDIUM | `/api/health`, `/api/llm/health`, `backend/app/llm` | `api-health.spec.ts`, `test_health_check`, `test_llm.py` |
+| 1 | `flight_search` | Flight Search | MEDIUM | `SearchForm.tsx`, `Header.tsx`, `/api/flights` | `search.spec.ts`, `test_flights_search_filter` |
+| 2 | `flight_selection` | Flight Selection | MEDIUM | `FlightResults.tsx`, `/api/flights` | `select-flight.spec.ts`, `test_flights_catalogue` |
+| 3 | `passenger_details` | Passenger Details & Validation | HIGH | `PassengerForm.tsx`, `ErrorBanner.tsx`, `/api/book` | `validation.spec.ts`, `test_booking_validation_failure` |
+| 4 | `flight_booking` | Flight Booking & Confirmation | CRITICAL | `Confirmation.tsx`, `PassengerForm.tsx`, `App.tsx`, `api.ts`, `/api/book` | `booking.spec.ts`, `test_booking_success` |
+
+---
+
+### 6. Transparent Risk Scoring Model
+
+Risk is computed by `RiskEngine` combining deterministic business rules with AI classification:
+- **0–30: LOW**
+- **31–70: MEDIUM**
+- **71–90: HIGH**
+- **91–100: CRITICAL**
+
+#### Scoring Components:
+1. **Journey Criticality Base**:
+   - `CRITICAL`: +50 points
+   - `HIGH`: +35 points
+   - `MEDIUM`: +20 points
+   - `LOW`: +10 points
+2. **Change Type Points**:
+   - `API`: +30 points
+   - `Business Logic`: +25 points
+   - `Configuration`: +25 points
+   - `UI (Behavioral)`: +20 points
+   - `UI (Cosmetic)`: +5 points
+   - `Test / Docs`: +0 to +5 points
+3. **Behavioral Modifier**:
+   - Behavioral changes (`is_behavioral=True`): +15 points
+   - Cosmetic changes (`is_behavioral=False`): -10 points (capped at 25–30 max)
+4. **Diff Volume Modifier**:
+   - Small (<50 lines): 0 points
+   - Medium (50–200 lines): +5 points
+   - Large (>200 lines): +10 points
+
+---
+
+### 7. How to Run TravelGuard CLI
+
+From the repository root:
+
+#### A. Analyze Current Git Changes
 ```bash
-# In project root:
-python3 -m venv backend/.venv
-source backend/.venv/bin/activate
-pip install -r backend/requirements.txt
+# Analyze unstaged, staged, and untracked changes in the working tree
+python -m travelguard analyze
+
+# Diff against a specific commit or branch reference
+python -m travelguard analyze --ref HEAD~1
 ```
 
-#### 2. Setup Frontend
+#### B. Run Deterministic Hackathon Demo Scenarios (Zero Code Mutation)
 ```bash
-cd frontend
-npm install
-cd ..
+# Scenario A: Cosmetic UI Change (Search button styling) -> Risk: LOW
+python -m travelguard analyze --demo scenario_a
+
+# Scenario B: Booking UI Change (PassengerForm submit handler) -> Risk: HIGH
+python -m travelguard analyze --demo scenario_b
+
+# Scenario C: Booking API Change (/api/book payload & validation) -> Risk: CRITICAL
+python -m travelguard analyze --demo scenario_c
+
+# Emit machine-readable JSON
+python -m travelguard analyze --demo scenario_c --json
+
+# Offline verification mode (uses mock LLM, no API keys required)
+python -m travelguard analyze --demo scenario_a --mock-llm
 ```
 
-#### 3. Setup Playwright Tests
+#### C. Inspect Registered Journeys and Demo Options
 ```bash
-cd tests
-npm install
-npx playwright install chromium
-cd ..
+# List all registered business user journeys
+python -m travelguard journeys
+
+# List available demo scenarios
+python -m travelguard demo
 ```
 
 ---
 
-### 7. How to Configure Environment Variables
-Copy `.env.example` to `.env`:
-```bash
-cp .env.example .env
+### 8. Example Analysis Output
+
 ```
+==================================================
+TRAVELGUARD AI
+CHANGE IMPACT ANALYSIS
+==================================================
 
-Configure your LLM provider credentials in `.env`:
-```ini
-# Primary LLM: DeepSeek
-DEEPSEEK_API_KEY=your_deepseek_api_key_here
-DEEPSEEK_MODEL=deepseek-v4-flash
-DEEPSEEK_BASE_URL=https://api.deepseek.com
+Changed Files:
 
-# Fallback LLM: Groq
-GROQ_API_KEY=your_groq_api_key_here
-GROQ_MODEL=llama-3.3-70b-versatile
-GROQ_BASE_URL=https://api.groq.com/openai/v1
+  M backend/app/api/booking.py
 
-# Ports
-BACKEND_HOST=0.0.0.0
-BACKEND_PORT=8000
-FRONTEND_PORT=5173
+--------------------------------------------------
+CHANGE SUMMARY
+--------------------------------------------------
+
+Updated booking ID generation and added passenger name length validation in the booking API.
+
+Change Type:
+BUSINESS_LOGIC (Behavioral)
+
+--------------------------------------------------
+BUSINESS IMPACT
+--------------------------------------------------
+
+Affected Journey:
+Passenger Details & Validation
+Capability:
+Passenger name validation
+Impact Level:
+HIGH
+
+Affected Journey:
+Flight Booking & Confirmation
+Capability:
+Booking confirmation ID generation
+Impact Level:
+CRITICAL
+
+Business Impact:
+If the new validation rejects valid passenger names or the altered booking ID format is incompatible with other systems, customers may be unable to complete bookings, leading to lost revenue and a negative user experience.
+
+--------------------------------------------------
+RISK
+--------------------------------------------------
+
+Risk Level:
+CRITICAL
+
+Risk Score:
+92/100
+
+Reason:
+The change modifies the booking ID format and introduces stricter name validation, which can break downstream services that rely on the old ID pattern and cause legitimate bookings to fail due to name length checks.
+
+--------------------------------------------------
+RECOMMENDED TESTS
+--------------------------------------------------
+
+✓ Booking Creation API (backend/tests/test_api.py::test_booking_success)
+✓ Booking Validation API (backend/tests/test_api.py::test_booking_validation_failure)
+✓ Flight Booking E2E (tests/e2e/booking.spec.ts)
+✓ Form Validation E2E (tests/e2e/validation.spec.ts)
+
+--------------------------------------------------
+AI CONFIDENCE & ORCHESTRATION
+--------------------------------------------------
+
+Confidence: 90%
+Provider:   Groq (Fallback Engaged)
+
+==================================================
 ```
-
-> [!NOTE]
-> `.env` is gitignored. Do not commit actual API keys to source control.
 
 ---
 
-### 8. How to Start the Backend
-From the project root:
+### 9. How to Run Automated Tests
+
+Execute all 36 unit and integration tests (both Increment 1 backend tests and Increment 2 TravelGuard tests):
+
 ```bash
-./backend/.venv/bin/python backend/run.py
+# Run complete test suite with pytest
+python -m pytest backend/tests travelguard/tests
 ```
-Or with uvicorn directly:
-```bash
-./backend/.venv/bin/uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port 8000 --reload
+
+Expected output:
 ```
-The backend will be available at `http://localhost:8000`.
-API documentation is automatically available at `http://localhost:8000/docs`.
+backend/tests/test_api.py .....                                          [ 13%]
+backend/tests/test_llm.py ....                                           [ 25%]
+travelguard/tests/test_analyzer.py ......                                [ 41%]
+travelguard/tests/test_change_detector.py .....                          [ 55%]
+travelguard/tests/test_demo_scenarios.py ....                            [ 66%]
+travelguard/tests/test_journey_mapping.py .......                        [ 86%]
+travelguard/tests/test_risk_engine.py .....                              [100%]
+
+============================= 36 passed in 1.32s ==============================
+```
 
 ---
 
-### 9. How to Start the Frontend
-In a separate terminal tab:
+### 10. How to Start the SkyBook Application
+
+#### Start Backend
+```bash
+python backend/run.py
+```
+Backend runs at `http://localhost:8000` (docs at `http://localhost:8000/docs`).
+
+#### Start Frontend
 ```bash
 cd frontend
 npm run dev
 ```
-The SkyBook frontend will open at `http://localhost:5173`.
+SkyBook frontend opens at `http://localhost:5173`.
 
 ---
 
-### 10. How to Run Playwright Tests
-Ensure the backend (`http://localhost:8000`) and frontend (`http://localhost:5173`) are running.
+### 11. What is Intentionally NOT Implemented Yet
 
-Then, execute the baseline suite:
-```bash
-cd tests
-npm test
+To preserve strict incremental engineering:
+- ❌ No automated test execution (tests are recommended only).
+- ❌ No self-healing or automatic locator rewriting.
+- ❌ No automatic source code modification or auto-commit.
+- ❌ No automatic test generation.
+- ❌ No CI/CD pull-request commenting bot.
+
+These capabilities are reserved for subsequent increments:
 ```
-
-To run individual tests:
-```bash
-npx playwright test e2e/booking.spec.ts
+Git / Application
+        ↓
+Change Detection       ← COMPLETED (Increment 2)
+        ↓
+Business Impact        ← COMPLETED (Increment 2)
+        ↓
+Risk Analysis          ← COMPLETED (Increment 2)
+        ↓
+Test Selection         ← (Future Increment)
+        ↓
+Test Generation        ← (Future Increment)
+        ↓
+Self-Healing           ← (Future Increment)
+        ↓
+Defect Detection       ← (Future Increment)
+        ↓
+Release Decision       ← (Future Increment)
 ```
-
-To run with visual browser UI:
-```bash
-npx playwright test --headed
-```
-
----
-
-### 11. How to Test the LLM Provider
-A dedicated diagnostic endpoint is provided at `GET /api/llm/health`.
-
-Using `curl`:
-```bash
-curl -s http://localhost:8000/api/llm/health
-```
-
-#### Expected Responses
-
-**When DeepSeek is active and configured:**
-```json
-{
-  "success": true,
-  "provider": "deepseek",
-  "model": "deepseek-v4-flash"
-}
-```
-
-**When DeepSeek fails (or has invalid credentials) and Groq succeeds:**
-```json
-{
-  "success": true,
-  "provider": "groq",
-  "model": "llama-3.3-70b-versatile",
-  "fallback_used": true
-}
-```
-
-**When neither provider has configured API keys:**
-```json
-{
-  "success": false,
-  "error": "Primary (deepseek) failed: DEEPSEEK_API_KEY is not set or empty. Fallback (groq) failed: GROQ_API_KEY is not set or empty"
-}
-```
-
----
-
-### 12. How DeepSeek → Groq Fallback Works
-
-The LLM abstraction uses a two-tier strategy orchestrated by `LLMService` (`backend/app/llm/router.py`):
-
-1. **Attempt Primary (`DeepSeekProvider`)**:
-   - Sends the prompt to `https://api.deepseek.com/chat/completions` using `DEEPSEEK_MODEL`.
-   - Logs:
-     ```
-     [LLM] Primary provider: DeepSeek
-     [LLM] Model: deepseek-v4-flash
-     ```
-2. **Handle Failure & Failover**:
-   - If DeepSeek encounters an authentication error, rate limit, timeout, or network failure:
-     ```
-     [LLM] Request failed: <error details>
-     [LLM] Falling back to Groq
-     [LLM] Model: llama-3.3-70b-versatile
-     ```
-3. **Execute Secondary (`GroqProvider`)**:
-   - Sends the request to Groq's high-speed API (`https://api.groq.com/openai/v1/chat/completions`).
-   - Marks `fallback_used: true` on the normalized `LLMResponse`.
-   - Logs:
-     ```
-     [LLM] Success (fallback: groq)
-     ```
-4. **Resilience & Security**:
-   - All errors are formatted cleanly without exposing raw authorization headers or keys.
-   - Provider models are completely configurable via environment variables without code modification.
