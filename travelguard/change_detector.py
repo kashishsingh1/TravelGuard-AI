@@ -116,10 +116,10 @@ class GitWorkingTreeSource(BaseChangeSource):
 
         changed = []
         for line in out.splitlines():
-            line = line.strip()
-            if not line:
+            if not line or not line.strip():
                 continue
             # Format: XY PATH or XY "PATH" or R  OLD -> NEW
+            # Two status characters, space, then path (do not strip line before slice)
             parts = line[3:].strip()
             if " -> " in parts:
                 parts = parts.split(" -> ")[-1].strip()
