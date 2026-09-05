@@ -274,7 +274,7 @@ class FailureDiagnosisEngine:
             response = await llm.generate(
                 prompt=evidence_prompt,
                 system_prompt=DIAGNOSIS_SYSTEM_PROMPT,
-                max_tokens=800,
+                max_tokens=1500,
                 temperature=0.1,
             )
             provider_used = response.provider
@@ -376,12 +376,37 @@ class FailureDiagnosisEngine:
         combined = error + " " + stderr
 
         # Strong API/backend failure signals → PRODUCT_DEFECT
-        if any(kw in combined for kw in ["500", "internal server error", "422", "400 bad request"]):
+        if any(kw in combined for kw in [
+            "500", "internal server error", "422", "400 bad request",
+            "expected: 201", "tobe(201)", "expected: 200", "received: 200",
+            "status code", "status()", "contract"
+        ]):
             return {
                 "classification": "PRODUCT_DEFECT",
-                "confidence": 0.75,
-                "summary": "Test failure indicates a backend API error (HTTP 4xx/5xx).",
-                "evidence": ["Error message contains HTTP error status code."],
+                "confidence": 0.85,
+                "summary": "Test failure indicates an API contract violation or unexpected HTTP status code.",
+                "evidence": [
+                    f"Failure message indicates API expectation mismatch: {failure.error_message[:200]}",
+                    "Deterministic API contract heuristic triggered.",
+                ],
+                "business_behavior_changed": True,
+                "recommended_action": "RAISE_BUG",
+            }
+
+        # Backend files changed + assertion failure → PRODUCT_DEFECT
+        changed_backend = [
+            f.path for f in change_set.files
+            if f.path.endswith(".py") or "backend" in f.path or "api" in f.path
+        ]
+        if changed_backend and ("expect" in combined or "received" in combined or "assert" in combined):
+            return {
+                "classification": "PRODUCT_DEFECT",
+                "confidence": 0.85,
+                "summary": f"Backend code modified ({', '.join(changed_backend[:2])}) violating test assertion.",
+                "evidence": [
+                    f"Modified backend files: {', '.join(changed_backend)}",
+                    f"Assertion failure: {failure.error_message[:200]}",
+                ],
                 "business_behavior_changed": True,
                 "recommended_action": "RAISE_BUG",
             }

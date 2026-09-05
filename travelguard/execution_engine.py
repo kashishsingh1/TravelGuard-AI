@@ -192,10 +192,19 @@ class TestExecutionEngine:
             )
 
         spec_results = failed_spec.get("results", [])
-        primary = spec_results[0] if spec_results else {}
+        if not spec_results:
+            for t in failed_spec.get("tests", []):
+                spec_results.extend(t.get("results", []))
+
+        primary = next((r for r in spec_results if r.get("status") in ("failed", "timedOut")), None) or (spec_results[0] if spec_results else {})
         error_info = primary.get("error", {})
-        error_message = error_info.get("message", stderr or "Unknown test failure")
-        stack_trace = error_info.get("stack", "")
+        if not error_info and primary.get("errors"):
+            error_info = primary["errors"][0]
+
+        raw_msg = error_info.get("message", stderr or stdout or "Unknown test failure")
+        error_message = re.sub(r"\x1b\[[0-9;]*m", "", raw_msg)
+        raw_stack = error_info.get("stack", "")
+        stack_trace = re.sub(r"\x1b\[[0-9;]*m", "", raw_stack)
         duration_ms = primary.get("duration", 0)
 
         # Failure line number from stack trace
