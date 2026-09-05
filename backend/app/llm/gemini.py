@@ -1,4 +1,4 @@
-"""DeepSeek LLM provider implementation."""
+"""Google Gemini secondary LLM provider implementation."""
 
 import time
 from typing import Optional
@@ -7,17 +7,17 @@ import httpx
 from app.llm.base import BaseLLMProvider, LLMProviderError, LLMResponse
 
 
-class DeepSeekProvider(BaseLLMProvider):
-    """DeepSeek LLM provider using OpenAI-compatible API protocol."""
+class GeminiProvider(BaseLLMProvider):
+    """Google Gemini LLM provider."""
 
     def __init__(
         self,
         api_key: str,
-        model: str = "deepseek-v4-flash",
-        base_url: str = "https://api.deepseek.com",
-        timeout: float = 12.0,
+        model: str = "gemini-3-flash-preview",
+        base_url: str = "https://generativelanguage.googleapis.com/v1beta",
+        timeout: float = 15.0,
     ):
-        self.name = "deepseek"
+        self.name = "gemini"
         self.api_key = api_key.strip() if api_key else ""
         self.model = model
         self.base_url = base_url.rstrip("/")
@@ -30,15 +30,16 @@ class DeepSeekProvider(BaseLLMProvider):
         max_tokens: int = 150,
         temperature: float = 0.7,
     ) -> LLMResponse:
-        """Execute chat completion request to DeepSeek."""
+        """Execute chat completion request to Google Gemini."""
         if not self.api_key:
             raise LLMProviderError(
                 provider=self.name,
-                message="DEEPSEEK_API_KEY is not set or empty",
+                message="GEMINI_API_KEY is not set or empty",
                 status_code=401,
             )
 
-        endpoint = f"{self.base_url}/chat/completions"
+        # Gemini supports OpenAI-compatible /openai/chat/completions endpoint
+        endpoint = f"{self.base_url}/openai/chat/completions"
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -86,7 +87,7 @@ class DeepSeekProvider(BaseLLMProvider):
                     content=content,
                     provider=self.name,
                     model=self.model,
-                    fallback_used=False,
+                    fallback_used=True,
                     latency_ms=round(latency, 2),
                 )
         except httpx.TimeoutException as exc:

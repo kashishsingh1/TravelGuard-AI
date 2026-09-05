@@ -1,10 +1,13 @@
-"""AI-powered change analysis using primary DeepSeek and Grok fallback."""
+"""AI-powered change analysis using primary Groq and multi-tier fallback."""
 
 import json
+import logging
 from pathlib import Path
 import re
 import sys
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger("travelguard.analyzer")
 
 # Ensure backend is in sys.path for app.llm imports
 _repo_root = Path(__file__).resolve().parent.parent
@@ -89,13 +92,39 @@ def extract_json_payload(raw_text: str) -> Dict[str, Any]:
         json_candidate = text[start : end + 1]
         try:
             return json.loads(json_candidate)
-        except json.JSONDecodeError as exc:
-            # Try cleaning trailing commas
-            cleaned = re.sub(r",\s*([\]}])", r"\1", json_candidate)
-            try:
-                return json.loads(cleaned)
-            except Exception:
-                raise ValueError(f"Malformed JSON returned by LLM: {str(exc)}") from exc
+        except json.JSONDecodeError:
+            pass
+
+        # Try cleaning trailing commas
+        cleaned = re.sub(r",\s*([\]}])", r"\1", json_candidate)
+        try:
+            return json.loads(cleaned)
+        except Exception:
+            pass
+
+        # Try fixing missing commas between key-value pairs
+        fixed_commas = re.sub(r'("(?:[^"\\]|\\.)*")\s*\n\s*(")', r'\1,\n\2', cleaned)
+        try:
+            return json.loads(fixed_commas)
+        except Exception:
+            pass
+
+        # Try regex extraction of common keys as a last-ditch JSON reconstruction
+        reconstructed = {}
+        for key in ["summary", "change_type", "is_behavioral", "ai_risk_level", "ai_risk_reason", "business_impact"]:
+            m = re.search(rf'"{key}"\s*:\s*(?:"([^"]*)"|(true|false|\d+))', text, re.IGNORECASE)
+            if m:
+                val = m.group(1) if m.group(1) is not None else m.group(2)
+                if val in ("true", "True"):
+                    reconstructed[key] = True
+                elif val in ("false", "False"):
+                    reconstructed[key] = False
+                elif val.isdigit():
+                    reconstructed[key] = int(val)
+                else:
+                    reconstructed[key] = val
+        if reconstructed.get("summary") or reconstructed.get("change_type"):
+            return reconstructed
 
     raise ValueError(f"Could not extract valid JSON from LLM response: {text[:200]}")
 
@@ -195,17 +224,42 @@ Please analyze this change and provide your response strictly conforming to the 
         if mock_response is not None:
             parsed_json = mock_response
         else:
-            service = self._get_llm_service()
-            prompt = self.build_prompt(change_set, det_result)
-            llm_res: LLMResponse = await service.generate(
-                prompt=prompt,
-                system_prompt=SYSTEM_PROMPT,
-                max_tokens=800,
-                temperature=0.2,
-            )
-            provider_name = llm_res.provider
-            fallback_used = llm_res.fallback_used
-            parsed_json = extract_json_payload(llm_res.content)
+            try:
+                service = self._get_llm_service()
+                prompt = self.build_prompt(change_set, det_result)
+                llm_res: LLMResponse = await service.generate(
+                    prompt=prompt,
+                    system_prompt=SYSTEM_PROMPT,
+                    max_tokens=800,
+                    temperature=0.2,
+                )
+                provider_name = llm_res.provider
+                fallback_used = llm_res.fallback_used
+                parsed_json = extract_json_payload(llm_res.content)
+            except Exception as exc:
+                logger.warning(f"[ImpactAnalyzer] LLM analysis failed ({exc}); engaging deterministic fallback.")
+                provider_name = "deterministic"
+                is_ui = any(f.path.endswith((".tsx", ".jsx", ".css", ".html")) for f in change_set.files)
+                is_api = any("api" in f.path or f.path.endswith(".py") for f in change_set.files)
+                ch_type = "api" if is_api else ("ui" if is_ui else "business_logic")
+                parsed_json = {
+                    "summary": f"Detected modifications in {len(change_set.files)} file(s): " + ", ".join(f.path for f in change_set.files[:3]),
+                    "change_type": ch_type,
+                    "is_behavioral": True,
+                    "affected_journeys": [
+                        {
+                            "journey_id": j.id,
+                            "journey_name": j.name,
+                            "impact_level": j.criticality.value,
+                            "capability": j.description,
+                        }
+                        for j in det_result.journeys
+                    ],
+                    "ai_risk_level": det_result.highest_criticality.value if det_result.journeys else "medium",
+                    "ai_risk_reason": "Deterministic fallback based on impacted journey criticality.",
+                    "business_impact": "Modifications to travel workflow components require targeted validation.",
+                    "confidence": 0.85,
+                }
 
         # 3. Extract and normalize LLM fields
         summary = parsed_json.get("summary", "Application modifications detected.")

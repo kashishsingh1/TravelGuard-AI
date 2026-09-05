@@ -1,0 +1,41 @@
+diff --git a/frontend/src/components/PassengerForm.tsx b/frontend/src/components/PassengerForm.tsx
+index a1b2c3d..e4f5g6h 100644
+--- a/frontend/src/components/PassengerForm.tsx
++++ b/frontend/src/components/PassengerForm.tsx
+@@ -16,6 +16,14 @@ export const PassengerForm: React.FC<PassengerFormProps> = ({
+   const [fullName, setFullName] = useState<string>('');
+   const [email, setEmail] = useState<string>('');
+   const [phone, setPhone] = useState<string>('');
++  const [promoCode, setPromoCode] = useState<string>('');
++  const [discountPercent, setDiscountPercent] = useState<number>(0);
++  const [promoApplied, setPromoApplied] = useState<boolean>(false);
++
++  const handleApplyPromo = () => {
++    if (promoCode.trim().toUpperCase() === 'FLY10') {
++      setDiscountPercent(10);
++      setPromoApplied(true);
++    }
++  };
++
+@@ -102,6 +115,18 @@ export const PassengerForm: React.FC<PassengerFormProps> = ({
+               />
+             </div>
+ 
++            {/* Promotional Discount Code */}
++            <div className="form-group promo-group">
++              <label htmlFor="promo-code-input" className="form-label">Promo Code</label>
++              <div className="promo-input-row">
++                <input
++                  id="promo-code-input"
++                  data-testid="promo-code-input"
++                  type="text"
++                  placeholder="e.g. FLY10"
++                  value={promoCode}
++                  onChange={(e) => setPromoCode(e.target.value)}
++                />
++                <button type="button" data-testid="apply-promo-btn" onClick={handleApplyPromo}>Apply</button>
++              </div>
++              {promoApplied && <span data-testid="promo-applied-badge">Promo Applied: {discountPercent}% OFF</span>}
++            </div>
++
+             <div className="passenger-submit-row">

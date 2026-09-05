@@ -100,9 +100,9 @@ async def test_analyzer_end_to_end_with_primary_llm():
         "confidence": 0.92,
     })
 
-    primary = MockAnalyzerProvider("deepseek", "deepseek-v4-flash", mock_json)
-    fallback = MockAnalyzerProvider("groq", "llama-3.3-70b-versatile", mock_json)
-    llm_service = LLMService(primary=primary, fallback=fallback)
+    primary = MockAnalyzerProvider("groq", "openai/gpt-oss-120b", mock_json)
+    fallback = MockAnalyzerProvider("openrouter", "openrouter/free", mock_json)
+    llm_service = LLMService(providers=[primary, fallback])
 
     analyzer = ChangeImpactAnalyzer(llm_service=llm_service)
     cs = ChangeSet(files=[FileChange(path="frontend/src/components/SearchForm.tsx", additions=3, deletions=1)])
@@ -110,15 +110,15 @@ async def test_analyzer_end_to_end_with_primary_llm():
     result: ImpactAnalysisResult = await analyzer.analyze(cs)
 
     assert result.summary == "Flight search form submit button altered"
-    assert result.provider_used == "deepseek"
+    assert result.provider_used == "groq"
     assert result.fallback_used is False
     assert result.risk.level in ("medium", "high")
     assert any(j.journey_id == "flight_search" for j in result.affected_journeys)
 
 
 @pytest.mark.asyncio
-async def test_analyzer_fallback_to_groq_on_primary_failure():
-    """Verify analyzer engages Grok fallback provider when DeepSeek fails."""
+async def test_analyzer_fallback_to_openrouter_on_primary_failure():
+    """Verify analyzer engages OpenRouter fallback provider when Groq fails."""
     mock_json = json.dumps({
         "summary": "Booking route changed",
         "change_type": "api",
@@ -138,15 +138,15 @@ async def test_analyzer_fallback_to_groq_on_primary_failure():
         "confidence": 0.96,
     })
 
-    primary_failing = MockAnalyzerProvider("deepseek", "deepseek-v4-flash", "", should_fail=True)
-    fallback_working = MockAnalyzerProvider("groq", "llama-3.3-70b-versatile", mock_json)
-    llm_service = LLMService(primary=primary_failing, fallback=fallback_working)
+    primary_failing = MockAnalyzerProvider("groq", "openai/gpt-oss-120b", "", should_fail=True)
+    fallback_working = MockAnalyzerProvider("openrouter", "openrouter/free", mock_json)
+    llm_service = LLMService(providers=[primary_failing, fallback_working])
 
     analyzer = ChangeImpactAnalyzer(llm_service=llm_service)
     cs = ChangeSet(files=[FileChange(path="backend/app/api/booking.py", additions=10, deletions=2)])
 
     result: ImpactAnalysisResult = await analyzer.analyze(cs)
 
-    assert result.provider_used == "groq"
+    assert result.provider_used == "openrouter"
     assert result.fallback_used is True
     assert result.risk.level == "critical"

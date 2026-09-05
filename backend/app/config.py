@@ -8,15 +8,23 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """Application settings loaded from environment variables or .env."""
 
-    # Primary LLM: DeepSeek
-    DEEPSEEK_API_KEY: str = ""
-    DEEPSEEK_MODEL: str = "deepseek-v4-flash"
-    DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
-
-    # Fallback LLM: Groq
+    # Primary LLM: Groq
     GROQ_API_KEY: str = ""
-    GROQ_MODEL: str = "openai/gpt-oss-20b"
+    GROQ_MODEL: str = "openai/gpt-oss-120b"
     GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
+
+    # Secondary LLM 1: OpenRouter (Fallback 1)
+    OPENROUTER_API_KEY: str = ""
+    OPENROUTER_MODEL: str = "openrouter/free"
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+
+    # Secondary LLM 2: Google Gemini (Fallback 2)
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-3-flash-preview"
+    GEMINI_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta"
+
+    # Configurable provider chain order
+    LLM_PROVIDER_ORDER: str = "groq,openrouter,gemini"
 
     # Server settings
     BACKEND_HOST: str = "0.0.0.0"
@@ -37,6 +45,13 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @property
+    def provider_order_list(self) -> List[str]:
+        """Return provider chain as a cleaned list of lowercase strings."""
+        if not self.LLM_PROVIDER_ORDER:
+            return ["groq", "openrouter", "gemini"]
+        return [p.strip().lower() for p in self.LLM_PROVIDER_ORDER.split(",") if p.strip()]
 
 
 @lru_cache()

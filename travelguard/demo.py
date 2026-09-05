@@ -93,6 +93,33 @@ DEMO_SCENARIOS = {
             "confidence": 0.97,
         },
     },
+    "scenario_d": {
+        "id": "scenario_d",
+        "name": "Scenario D: New Feature (Promo Code)",
+        "description": "Promotional discount coupon input and dynamic calculation added to PassengerForm",
+        "fixture_file": "scenario_d_promo_code.diff",
+        "mock_response": {
+            "summary": "Added promotional discount coupon input and discount calculation to passenger details checkout",
+            "change_type": "ui",
+            "is_behavioral": True,
+            "affected_journeys": [
+                {
+                    "journey_id": "flight_booking",
+                    "journey_name": "Flight Booking & Confirmation",
+                    "impact_level": "high",
+                    "capability": "Promotional coupon application and checkout fare calculation",
+                }
+            ],
+            "ai_risk_level": "high",
+            "ai_risk_reason": "Introduces new promotional code state, coupon validation, and dynamic fare modification.",
+            "recommended_tests": [
+                "Flight Booking E2E (tests/e2e/booking.spec.ts)",
+                "Booking Creation API (backend/tests/test_api.py::test_booking_success)",
+            ],
+            "business_impact": "Pricing discrepancy or checkout disruption if promotional calculation fails.",
+            "confidence": 0.96,
+        },
+    },
 }
 
 

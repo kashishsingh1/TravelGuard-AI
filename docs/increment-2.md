@@ -7,7 +7,7 @@
 Increment 2 introduces the first real intelligence layer of **TravelGuard AI**:
 - Translating low-level code/file modifications into **high-level business intent**.
 - Reasoning about impact on customer user journeys in SkyBook.
-- Assessing risk via deterministic rules and multi-provider LLM analysis (DeepSeek with Grok fallback).
+- Assessing risk via deterministic rules and multi-provider LLM analysis (Groq primary with OpenRouter and Gemini fallbacks).
 - Recommending targeted tests to run.
 - Providing deterministic hackathon demo scenarios and a rich interactive CLI.
 
@@ -19,10 +19,11 @@ Increment 2 introduces the first real intelligence layer of **TravelGuard AI**:
 2. **Deterministic First, LLM Augmented**:
    Before querying the LLM, known paths and components are matched against the machine-readable **Business Journey Registry** (`travelguard/journeys.yaml`). This avoids wasting LLM calls on basic file routing while providing rich context to the LLM prompt.
 3. **Multi-Tier Resilient LLM Layer**:
-   Reuses the Increment 1 provider router:
-   - Primary: **DeepSeek** (`deepseek-v4-flash`)
-   - Fallback: **Grok** (`llama-3.3-70b-versatile` / `openai/gpt-oss-20b`)
-   - If DeepSeek is unavailable or encounters a network/rate limit error, failover to Grok happens seamlessly with observable logging.
+   Reuses the provider router:
+   - Primary: **Groq** (`openai/gpt-oss-120b` or `openai/gpt-oss-20b`)
+   - Fallback 1: **OpenRouter** (`openrouter/free`)
+   - Fallback 2: **Gemini** (`gemini-3-flash-preview`)
+   - If a provider is unavailable or encounters a network/rate limit error, failover down the hierarchy happens seamlessly with observable logging.
 4. **Transparent Risk Scoring**:
    Combines journey criticality, modification type (API vs UI vs config), behavioral significance, and diff volume into a clean 0–100 score and categorical level (LOW, MEDIUM, HIGH, CRITICAL).
 5. **Zero Mutation / Safe Boundary**:
@@ -57,7 +58,7 @@ Deterministic Journey       Candidate Tests
                      │
                      ▼
           [LLMService Router]
-       Primary: DeepSeek ──(failover)──► Fallback: Grok
+       Primary: Groq ──(failover)──► OpenRouter ──(failover)──► Gemini
                      │
                      ▼
           Validated Structured JSON

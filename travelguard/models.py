@@ -1,4 +1,4 @@
-"""Data models for TravelGuard change detection and business impact analysis."""
+"""Data models for TravelGuard change detection, business impact, intelligent test selection, and test generation."""
 
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -105,3 +105,80 @@ class ImpactAnalysisResult(BaseModel):
     confidence: float = Field(default=0.9, ge=0.0, le=1.0, description="AI confidence score")
     provider_used: Optional[str] = Field(default=None, description="LLM provider name that performed analysis")
     fallback_used: bool = Field(default=False, description="Whether fallback LLM was engaged")
+
+
+# ==============================================================================
+# Increment 3: Intelligent Test Selection & AI Test Generation Models
+# ==============================================================================
+
+class TestPriority(str, Enum):
+    """Test priority classification."""
+    __test__ = False
+    P0 = "P0"  # Critical business path (Booking, Confirmation, Core API)
+    P1 = "P1"  # Important regression coverage (Search, Validation)
+    P2 = "P2"  # Lower-risk / cosmetic coverage (Visual styling, display text)
+
+
+class TestItem(BaseModel):
+    """Machine-readable inventory item representing an existing test."""
+    __test__ = False
+    id: str = Field(..., description="Unique test identifier")
+    name: str = Field(..., description="Human-readable test title")
+    file: str = Field(..., description="File path relative to repository root")
+    description: str = Field(..., description="What the test validates")
+    business_journeys: List[str] = Field(default_factory=list, description="Journeys covered by this test")
+    criticality: str = Field(default="high", description="critical | high | medium | low")
+    priority_tier: TestPriority = Field(default=TestPriority.P1, description="Default priority tier")
+    tags: List[str] = Field(default_factory=list, description="Test category tags")
+    expected_duration_ms: int = Field(default=1000, description="Typical execution time in ms")
+
+
+class SelectedTest(BaseModel):
+    """Test selected for execution with priority and data-driven rationale."""
+    test_id: str = Field(..., description="Test inventory ID")
+    file: str = Field(..., description="Test file path")
+    name: str = Field(..., description="Test title")
+    priority: TestPriority = Field(..., description="P0 | P1 | P2")
+    reason: str = Field(..., description="Data-driven reason for selecting this test")
+    confidence: float = Field(default=0.95, ge=0.0, le=1.0, description="Confidence in selection")
+
+
+class SkippedTest(BaseModel):
+    """Test deemed not necessary for the change, with reason."""
+    test_id: str = Field(..., description="Test inventory ID")
+    file: str = Field(..., description="Test file path")
+    name: str = Field(..., description="Test title")
+    reason: str = Field(..., description="Data-driven reason for skipping this test")
+
+
+class CoverageStatus(str, Enum):
+    """Coverage adequacy determination."""
+    SUFFICIENT = "SUFFICIENT"
+    INSUFFICIENT = "INSUFFICIENT"
+
+
+class CoverageAnalysis(BaseModel):
+    """Analysis of whether existing test inventory adequately covers the change."""
+    status: CoverageStatus = Field(..., description="SUFFICIENT | INSUFFICIENT")
+    missing_scenarios: List[str] = Field(default_factory=list, description="Missing test scenarios if any")
+    reason: str = Field(..., description="Explanation of coverage status")
+
+
+class GeneratedTest(BaseModel):
+    """AI-generated Playwright test candidate."""
+    file_path: str = Field(..., description="Target file path under tests/generated/")
+    code: str = Field(..., description="Generated TypeScript Playwright test code")
+    scenario_name: str = Field(..., description="Name of scenario covered")
+    journey_id: str = Field(..., description="Target business journey")
+    validation_status: str = Field(default="PENDING", description="PASSED | FAILED")
+    validation_details: Optional[str] = Field(default=None, description="Static validator diagnostic output")
+
+
+class TestIntelligenceResult(BaseModel):
+    """Complete structured output of the Increment 3 pipeline."""
+    __test__ = False
+    impact: ImpactAnalysisResult = Field(..., description="Impact analysis result from Increment 2")
+    selected_tests: List[SelectedTest] = Field(default_factory=list, description="Tests chosen for execution")
+    skipped_tests: List[SkippedTest] = Field(default_factory=list, description="Tests intentionally omitted")
+    coverage: CoverageAnalysis = Field(..., description="Coverage gap evaluation")
+    generated_test: Optional[GeneratedTest] = Field(default=None, description="Candidate generated test if gap detected")

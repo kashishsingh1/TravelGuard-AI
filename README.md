@@ -1,5 +1,5 @@
 # TravelGuard AI — Autonomous QA Platform
-## Increment 2: Change Detection & Business Impact Analysis
+## Increment 3: Intelligent Test Selection & AI Test Generation
 
 ---
 
@@ -7,10 +7,13 @@
 **TravelGuard AI** is an **Autonomous QA Engineer for AI-driven travel applications**. It bridges the gap between code-level commits and high-level travel business intent:
 - Detects what changed across the repository (working tree, git commit ranges, or CI PR diffs).
 - Translates file changes into affected **Business User Journeys** (Flight Search, Flight Selection, Passenger Details, Flight Booking & Confirmation).
-- Employs resilient multi-provider LLM reasoning (**DeepSeek** primary with automatic failover to **Grok**).
+- Employs a resilient 3-tier LLM hierarchy (**Groq** primary $\to$ **OpenRouter** fallback 1 $\to$ **Gemini** fallback 2).
 - Computes a transparent, explainable **Risk Score (0–100)** and risk tier (**LOW, MEDIUM, HIGH, CRITICAL**).
-- Recommends targeted automated tests to execute.
-- Provides reproducible, zero-mutation **Hackathon Demo Scenarios**.
+- Maintains a machine-readable **Test Inventory** (`travelguard/test_inventory.yaml`).
+- **Intelligently selects** tests into prioritized tiers (**P0, P1, P2**) with data-driven rationale and transparent accounting of skipped tests.
+- Detects **Coverage Gaps** when changes introduce capabilities unhandled by existing tests.
+- **Generates Playwright TypeScript tests** (`tests/generated/`) with mandatory static validation (imports, assertions, syntax balance, no arbitrary timeouts).
+- Provides reproducible, zero-mutation **4 Hackathon Demo Scenarios**.
 
 ---
 
@@ -38,17 +41,12 @@ Git Working Tree / Commits / PRs / Preset Fixtures
                   [JourneyMapper]
         (Matches paths against journeys.yaml)
                           │
-            ┌─────────────┴─────────────┐
-            ▼                           ▼
-     Known Journeys              Candidate Tests
-            │                           │
-            └─────────────┬─────────────┘
                           ▼
                 [ChangeImpactAnalyzer]
                           │
                           ▼
                  [LLMService Router]
-         Primary: DeepSeek ──(fallback)──► Grok
+        Primary: Groq ──(fallback)──► OpenRouter ──(fallback)──► Gemini
                           │
                           ▼
                Validated Structured JSON
@@ -58,37 +56,93 @@ Git Working Tree / Commits / PRs / Preset Fixtures
         (Transparent 0–100 score calculation)
                           │
                           ▼
-                [TestRecommender]
-        (Prioritizes E2E and API test suites)
+            [TestIntelligencePipeline]
                           │
-                          ▼
-            [CLI Report & Impact Result]
+            ┌─────────────┴─────────────┐
+            ▼                           ▼
+  [TestSelectorEngine]         [CoverageAnalyzer]
+ (P0/P1/P2 Selection &        (Gap Detection against
+  Skipped Test Accounting)       Test Inventory)
+                                        │ (If INSUFFICIENT)
+                                        ▼
+                               [AITestGenerator]
+                             (Playwright TypeScript)
+                                        │
+                                        ▼
+                                 [TestValidator]
+                            (Multi-point Static QA)
+                                        │
+                                        ▼
+                       Candidate in tests/generated/
 ```
 
 ---
 
-### 4. Repository Structure
+### 4. Resilient 3-Tier Multi-Provider LLM Hierarchy
+
+All LLM calls flow through an observable fallback router. If any provider fails, the router immediately attempts the next tier:
+
+| Tier | Provider | Model | Environment Variable | Role |
+|---|---|---|---|---|
+| **Tier 1 (Primary)** | Groq | `openai/gpt-oss-120b` (or `openai/gpt-oss-20b`) | `GROQ_API_KEY`, `GROQ_MODEL` | Ultra-fast primary reasoning |
+| **Tier 2 (Fallback 1)** | OpenRouter | `openrouter/free` | `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | Secondary fallback provider |
+| **Tier 3 (Fallback 2)** | Gemini | `gemini-3-flash-preview` | `GEMINI_API_KEY`, `GEMINI_MODEL` | High-capacity tertiary fallback |
+
+If all three providers fail, the router returns `ALL_LLM_PROVIDERS_FAILED`.
+
+Health check endpoint: `GET /api/llm/health` reports status across all 3 tiers without leaking credentials.
+
+---
+
+### 5. Machine-Readable Test Inventory
+
+Registered in `travelguard/test_inventory.yaml`, representing actual tests in the repository:
+
+| Test ID | File | Journeys Covered | Criticality | Default Priority |
+|---|---|---|---|---|
+| `flight-booking` | `tests/e2e/booking.spec.ts` | `flight_booking`, `passenger_details` | `critical` | **P0** |
+| `booking-api` | `backend/tests/test_api.py::test_booking_success` | `flight_booking` | `critical` | **P0** |
+| `passenger-validation` | `tests/e2e/validation.spec.ts` | `passenger_details` | `high` | **P1** |
+| `flight-selection` | `tests/e2e/select-flight.spec.ts` | `flight_selection` | `high` | **P1** |
+| `flight-search` | `tests/e2e/search.spec.ts` | `flight_search` | `medium` | **P1** |
+
+CLI command to inspect the inventory:
+```bash
+python -m travelguard test-inventory
+```
+
+---
+
+### 6. Repository Structure
 
 ```
 TravelGuard-AI/
-├── travelguard/                  # TravelGuard Intelligence Core (INCREMENT 2)
-│   ├── __init__.py               # Package version (v0.2.0)
+├── travelguard/                  # TravelGuard Intelligence Core (INCREMENT 3)
+│   ├── __init__.py               # Package version (v0.3.0)
 │   ├── __main__.py               # CLI runner entrypoint
 │   ├── analyzer.py               # AI change analyzer with JSON validation & LLM routing
 │   ├── change_detector.py        # Git working tree, commit diff & fixture change detection
-│   ├── cli.py                    # Terminal report formatter & argument parsing
-│   ├── demo.py                   # Deterministic hackathon demo scenario runner
+│   ├── cli.py                    # Rich terminal report formatter & CLI parser
+│   ├── coverage_analyzer.py      # Coverage gap detection engine
+│   ├── demo.py                   # Deterministic hackathon demo runner (Scenarios A-D)
 │   ├── journey_mapper.py         # Deterministic journey & capability mapping
 │   ├── journeys.yaml             # Machine-readable Business Journey Registry
-│   ├── models.py                 # Pydantic schemas (ChangeSet, FileChange, ImpactResult)
+│   ├── models.py                 # Pydantic schemas (ChangeSet, TestIntelligenceResult, etc.)
+│   ├── pipeline.py               # Test Intelligence Pipeline orchestrator
 │   ├── recommender.py            # Targeted test recommendation engine
-│   ├── registry.py               # Journey registry loader & query interface
+│   ├── registry.py               # Journey registry loader
 │   ├── risk_engine.py            # Transparent risk scoring engine (0-100)
+│   ├── test_generator.py         # Grounded Playwright test generator
+│   ├── test_inventory.py         # Test inventory registry loader
+│   ├── test_inventory.yaml       # Machine-readable test catalog
+│   ├── test_selector.py          # Deterministic & LLM-based P0/P1/P2 test selector
+│   ├── test_validator.py         # Multi-point static Playwright test validator
 │   ├── fixtures/                 # Predefined diff fixtures for deterministic demos
 │   │   ├── scenario_a_cosmetic_ui.diff
 │   │   ├── scenario_b_booking_ui.diff
-│   │   └── scenario_c_booking_api.diff
-│   └── tests/                    # 36 automated unit & integration tests
+│   │   ├── scenario_c_booking_api.diff
+│   │   └── scenario_d_promo_code.diff
+│   └── tests/                    # 36 automated unit tests
 ├── frontend/                     # SkyBook React + TypeScript + Vite SUT
 │   ├── src/
 │   │   ├── components/           # Header, SearchForm, FlightResults, PassengerForm, Confirmation
@@ -101,72 +155,31 @@ TravelGuard-AI/
 ├── backend/                      # Python FastAPI Backend
 │   ├── app/
 │   │   ├── api/                  # /api/health, /api/flights, /api/book, /api/llm
-│   │   ├── llm/                  # Provider abstraction (DeepSeek, Grok, Router)
+│   │   ├── llm/                  # 3-Tier Provider abstraction (Groq, OpenRouter, Gemini, Router)
 │   │   ├── models/               # Pydantic data schemas
 │   │   ├── config.py             # Pydantic Settings reading .env
 │   │   └── main.py               # App configuration & CORS middleware
+│   ├── tests/                    # 13 backend unit & router fallback tests
 │   ├── requirements.txt
 │   └── run.py                    # Server launch script
 ├── tests/                        # Playwright Test Suite (TypeScript)
-│   ├── e2e/
-│   │   ├── search.spec.ts        # TEST 1: Flight search
-│   │   ├── select-flight.spec.ts # TEST 2: Flight selection
-│   │   ├── booking.spec.ts       # TEST 3: End-to-end booking flow
-│   │   ├── validation.spec.ts    # TEST 4: Form validation rejection
-│   │   └── api-health.spec.ts    # TEST 5: API & LLM health validation
+│   ├── e2e/                      # 11 baseline E2E & API health tests
+│   │   ├── search.spec.ts
+│   │   ├── select-flight.spec.ts
+│   │   ├── booking.spec.ts
+│   │   ├── validation.spec.ts
+│   │   └── api-health.spec.ts
+│   ├── generated/                # Isolated directory for AI-generated candidate tests
 │   ├── playwright.config.ts
 │   └── package.json
 ├── docs/
-│   └── increment-2.md            # In-depth architectural design document
-├── .env.example                  # Environment configuration template
+│   ├── increment-1.md            # SUT & baseline test specification
+│   ├── increment-2.md            # Change detection & business impact design
+│   └── increment-3.md            # Test selection & AI generation design
+├── .env.example                  # Template with Groq, OpenRouter, Gemini configs
 ├── .gitignore                    # Secrets and build ignore rules
 └── README.md
 ```
-
----
-
-### 5. Machine-Readable Business Journey Registry
-
-Defined in `travelguard/journeys.yaml`:
-
-| Stage | Journey ID | Name | Criticality | Components / Routes | Candidate Tests |
-|---|---|---|---|---|---|
-| 0 | `system_health` | System & LLM Diagnostics | MEDIUM | `/api/health`, `/api/llm/health`, `backend/app/llm` | `api-health.spec.ts`, `test_health_check`, `test_llm.py` |
-| 1 | `flight_search` | Flight Search | MEDIUM | `SearchForm.tsx`, `Header.tsx`, `/api/flights` | `search.spec.ts`, `test_flights_search_filter` |
-| 2 | `flight_selection` | Flight Selection | MEDIUM | `FlightResults.tsx`, `/api/flights` | `select-flight.spec.ts`, `test_flights_catalogue` |
-| 3 | `passenger_details` | Passenger Details & Validation | HIGH | `PassengerForm.tsx`, `ErrorBanner.tsx`, `/api/book` | `validation.spec.ts`, `test_booking_validation_failure` |
-| 4 | `flight_booking` | Flight Booking & Confirmation | CRITICAL | `Confirmation.tsx`, `PassengerForm.tsx`, `App.tsx`, `api.ts`, `/api/book` | `booking.spec.ts`, `test_booking_success` |
-
----
-
-### 6. Transparent Risk Scoring Model
-
-Risk is computed by `RiskEngine` combining deterministic business rules with AI classification:
-- **0–30: LOW**
-- **31–70: MEDIUM**
-- **71–90: HIGH**
-- **91–100: CRITICAL**
-
-#### Scoring Components:
-1. **Journey Criticality Base**:
-   - `CRITICAL`: +50 points
-   - `HIGH`: +35 points
-   - `MEDIUM`: +20 points
-   - `LOW`: +10 points
-2. **Change Type Points**:
-   - `API`: +30 points
-   - `Business Logic`: +25 points
-   - `Configuration`: +25 points
-   - `UI (Behavioral)`: +20 points
-   - `UI (Cosmetic)`: +5 points
-   - `Test / Docs`: +0 to +5 points
-3. **Behavioral Modifier**:
-   - Behavioral changes (`is_behavioral=True`): +15 points
-   - Cosmetic changes (`is_behavioral=False`): -10 points (capped at 25–30 max)
-4. **Diff Volume Modifier**:
-   - Small (<50 lines): 0 points
-   - Medium (50–200 lines): +5 points
-   - Large (>200 lines): +10 points
 
 ---
 
@@ -174,7 +187,7 @@ Risk is computed by `RiskEngine` combining deterministic business rules with AI 
 
 From the repository root:
 
-#### A. Analyze Current Git Changes
+#### A. Analyze Current Working Tree or Git Commits
 ```bash
 # Analyze unstaged, staged, and untracked changes in the working tree
 python -m travelguard analyze
@@ -183,27 +196,33 @@ python -m travelguard analyze
 python -m travelguard analyze --ref HEAD~1
 ```
 
-#### B. Run Deterministic Hackathon Demo Scenarios (Zero Code Mutation)
+#### B. Run the 4 Deterministic Hackathon Demo Scenarios
 ```bash
-# Scenario A: Cosmetic UI Change (Search button styling) -> Risk: LOW
+# Scenario A: Cosmetic UI Change (Search button styling) -> Risk: LOW, P2 Selected
 python -m travelguard analyze --demo scenario_a
 
-# Scenario B: Booking UI Change (PassengerForm submit handler) -> Risk: HIGH
+# Scenario B: Booking UI Change (PassengerForm submit handler) -> Risk: HIGH, P0 Selected
 python -m travelguard analyze --demo scenario_b
 
-# Scenario C: Booking API Change (/api/book payload & validation) -> Risk: CRITICAL
+# Scenario C: Booking API Change (/api/book payload & validation) -> Risk: CRITICAL, P0 Selected
 python -m travelguard analyze --demo scenario_c
 
-# Emit machine-readable JSON
-python -m travelguard analyze --demo scenario_c --json
+# Scenario D: New Feature (Promo Code) -> Gap Detected -> Generates & Statically Validates Test!
+python -m travelguard analyze --demo scenario_d
 
-# Offline verification mode (uses mock LLM, no API keys required)
-python -m travelguard analyze --demo scenario_a --mock-llm
+# Emit machine-readable JSON for CI integration
+python -m travelguard analyze --demo scenario_d --json
+
+# Offline verification mode (deterministic mock LLM)
+python -m travelguard analyze --demo scenario_d --mock-llm
 ```
 
-#### C. Inspect Registered Journeys and Demo Options
+#### C. Inspect Test Inventory and Business Journeys
 ```bash
-# List all registered business user journeys
+# View all registered tests with priorities and journey tags
+python -m travelguard test-inventory
+
+# View all registered business user journeys
 python -m travelguard journeys
 
 # List available demo scenarios
@@ -212,77 +231,87 @@ python -m travelguard demo
 
 ---
 
-### 8. Example Analysis Output
+### 8. Example Analysis Output (Scenario D: New Feature)
 
 ```
 ==================================================
 TRAVELGUARD AI
-CHANGE IMPACT ANALYSIS
+INTELLIGENT TEST SELECTION & AI GENERATION
 ==================================================
 
 Changed Files:
-
-  M backend/app/api/booking.py
+  M frontend/src/components/PassengerForm.tsx
 
 --------------------------------------------------
 CHANGE SUMMARY
 --------------------------------------------------
-
-Updated booking ID generation and added passenger name length validation in the booking API.
-
-Change Type:
-BUSINESS_LOGIC (Behavioral)
+Added promotional discount coupon input and discount calculation to passenger details checkout.
+Change Type: UI (Behavioral)
 
 --------------------------------------------------
 BUSINESS IMPACT
 --------------------------------------------------
-
-Affected Journey:
-Passenger Details & Validation
-Capability:
-Passenger name validation
-Impact Level:
-HIGH
-
-Affected Journey:
-Flight Booking & Confirmation
-Capability:
-Booking confirmation ID generation
-Impact Level:
-CRITICAL
+Affected Journey: Flight Booking & Confirmation
+Capability:       Promotional coupon application and checkout fare calculation
+Impact Level:     HIGH
 
 Business Impact:
-If the new validation rejects valid passenger names or the altered booking ID format is incompatible with other systems, customers may be unable to complete bookings, leading to lost revenue and a negative user experience.
+Pricing discrepancy or checkout disruption if promotional calculation fails.
 
 --------------------------------------------------
-RISK
+RISK ASSESSMENT
 --------------------------------------------------
-
-Risk Level:
-CRITICAL
-
-Risk Score:
-92/100
-
-Reason:
-The change modifies the booking ID format and introduces stricter name validation, which can break downstream services that rely on the old ID pattern and cause legitimate bookings to fail due to name length checks.
+Risk Level: HIGH
+Risk Score: 85/100
+Reason:     Introduces new promotional code state, coupon validation, and dynamic fare modification.
 
 --------------------------------------------------
-RECOMMENDED TESTS
+INTELLIGENT TEST SELECTION (P0 / P1 / P2)
 --------------------------------------------------
+Selected Tests (2):
+  [P0] tests/e2e/booking.spec.ts
+       Reason: Critical revenue-impacting booking flow directly modified by form changes
+  [P0] backend/tests/test_api.py::test_booking_success
+       Reason: Booking transaction API contract must be validated against passenger payload changes
 
-✓ Booking Creation API (backend/tests/test_api.py::test_booking_success)
-✓ Booking Validation API (backend/tests/test_api.py::test_booking_validation_failure)
-✓ Flight Booking E2E (tests/e2e/booking.spec.ts)
-✓ Form Validation E2E (tests/e2e/validation.spec.ts)
+Skipped Tests (3):
+  [-] tests/e2e/search.spec.ts
+      Reason: Test targets flight_search, but change only impacts flight_booking
+  [-] tests/e2e/select-flight.spec.ts
+      Reason: Test targets flight_selection, but change only impacts flight_booking
+  [-] tests/e2e/validation.spec.ts
+      Reason: Existing validation does not cover new promo code capabilities
 
 --------------------------------------------------
-AI CONFIDENCE & ORCHESTRATION
+COVERAGE GAP EVALUATION
 --------------------------------------------------
+Status: INSUFFICIENT
+Reason: Code change introduces promotional code logic but no test in the inventory covers promo code application.
+Missing Scenarios:
+  - Promo code input validation and discount application
 
-Confidence: 90%
-Provider:   Groq (Fallback Engaged)
+--------------------------------------------------
+AI-GENERATED PLAYWRIGHT TEST
+--------------------------------------------------
+File:              tests/generated/promo-code.spec.ts
+Target Journey:    Flight Booking & Confirmation
+Validation Status: PASSED
 
+Static Checks Passed:
+  ✓ File written to tests/generated/
+  ✓ Playwright imports verified (@playwright/test)
+  ✓ Executable test() suite defined
+  ✓ Assertions present (expect)
+  ✓ Syntax structure balanced
+  ✓ No arbitrary sleep (page.waitForTimeout avoided)
+  ✓ AI disclaimer header present
+
+--------------------------------------------------
+AI ORCHESTRATION
+--------------------------------------------------
+Provider Used: Groq (openai/gpt-oss-120b)
+Confidence:    96%
+Fallback Used: No
 ==================================================
 ```
 
@@ -290,24 +319,17 @@ Provider:   Groq (Fallback Engaged)
 
 ### 9. How to Run Automated Tests
 
-Execute all 36 unit and integration tests (both Increment 1 backend tests and Increment 2 TravelGuard tests):
+Execute all 60 automated tests across all tiers:
 
 ```bash
-# Run complete test suite with pytest
-python -m pytest backend/tests travelguard/tests
-```
+# 1. Run TravelGuard Intelligence Unit Tests (36 tests)
+PYTHONPATH=. ./backend/.venv/bin/pytest travelguard/tests
 
-Expected output:
-```
-backend/tests/test_api.py .....                                          [ 13%]
-backend/tests/test_llm.py ....                                           [ 25%]
-travelguard/tests/test_analyzer.py ......                                [ 41%]
-travelguard/tests/test_change_detector.py .....                          [ 55%]
-travelguard/tests/test_demo_scenarios.py ....                            [ 66%]
-travelguard/tests/test_journey_mapping.py .......                        [ 86%]
-travelguard/tests/test_risk_engine.py .....                              [100%]
+# 2. Run Backend & Router Fallback Unit Tests (13 tests)
+PYTHONPATH=backend ./backend/.venv/bin/pytest backend/tests
 
-============================= 36 passed in 1.32s ==============================
+# 3. Run Playwright E2E & Health Suite (11 tests)
+cd tests && npm test
 ```
 
 ---
@@ -316,7 +338,7 @@ travelguard/tests/test_risk_engine.py .....                              [100%]
 
 #### Start Backend
 ```bash
-python backend/run.py
+./backend/.venv/bin/uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000 --reload
 ```
 Backend runs at `http://localhost:8000` (docs at `http://localhost:8000/docs`).
 
@@ -329,18 +351,10 @@ SkyBook frontend opens at `http://localhost:5173`.
 
 ---
 
-### 11. What is Intentionally NOT Implemented Yet
+### 11. Incremental Roadmap
 
-To preserve strict incremental engineering:
-- ❌ No automated test execution (tests are recommended only).
-- ❌ No self-healing or automatic locator rewriting.
-- ❌ No automatic source code modification or auto-commit.
-- ❌ No automatic test generation.
-- ❌ No CI/CD pull-request commenting bot.
-
-These capabilities are reserved for subsequent increments:
 ```
-Git / Application
+Git / Application Changes
         ↓
 Change Detection       ← COMPLETED (Increment 2)
         ↓
@@ -348,13 +362,17 @@ Business Impact        ← COMPLETED (Increment 2)
         ↓
 Risk Analysis          ← COMPLETED (Increment 2)
         ↓
-Test Selection         ← (Future Increment)
+Test Selection         ← COMPLETED (Increment 3)
         ↓
-Test Generation        ← (Future Increment)
+Test Generation        ← COMPLETED (Increment 3)
         ↓
-Self-Healing           ← (Future Increment)
+Static QA Validation   ← COMPLETED (Increment 3)
         ↓
-Defect Detection       ← (Future Increment)
+Test Execution         ← (Increment 4)
         ↓
-Release Decision       ← (Future Increment)
+Self-Healing           ← (Increment 4)
+        ↓
+Defect Analysis        ← (Increment 5)
+        ↓
+Release Decision       ← (Increment 5)
 ```

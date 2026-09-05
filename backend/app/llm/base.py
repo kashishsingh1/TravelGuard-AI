@@ -9,7 +9,7 @@ class LLMResponse(BaseModel):
     """Normalized response from any LLM provider."""
 
     content: str = Field(..., description="Generated text content")
-    provider: str = Field(..., description="Provider name (e.g., deepseek, grok)")
+    provider: str = Field(..., description="Provider name (e.g., groq, openrouter, gemini)")
     model: str = Field(..., description="Model identifier used")
     fallback_used: bool = Field(default=False, description="Whether fallback provider was used")
     latency_ms: float = Field(default=0.0, description="Response latency in milliseconds")

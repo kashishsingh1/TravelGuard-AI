@@ -1,9 +1,8 @@
-"""Command-line interface for TravelGuard AI."""
+"""Command-line interface for TravelGuard AI — Autonomous Test Intelligence."""
 
 import argparse
 import asyncio
 import json
-import os
 from pathlib import Path
 import sys
 from typing import Optional
@@ -22,26 +21,27 @@ _backend_dir = _repo_root / "backend"
 if str(_backend_dir) not in sys.path:
     sys.path.insert(0, str(_backend_dir))
 
-from travelguard.analyzer import ChangeImpactAnalyzer
-from travelguard.change_detector import ChangeDetector, GitCommitDiffSource, GitWorkingTreeSource
-from travelguard.demo import DEMO_SCENARIOS, run_demo_scenario
-from travelguard.models import ChangeSet, ImpactAnalysisResult
+from travelguard.change_detector import ChangeDetector, GitCommitDiffSource, GitWorkingTreeSource, FixtureChangeSource
+from travelguard.demo import DEMO_SCENARIOS, load_scenario_diff
+from travelguard.models import ChangeSet, TestIntelligenceResult
+from travelguard.pipeline import TestIntelligencePipeline
 from travelguard.registry import get_journey_registry
+from travelguard.test_inventory import get_test_inventory
 
 
-def format_cli_report(change_set: ChangeSet, result: ImpactAnalysisResult) -> str:
-    """Format the analysis result into a clean, human-readable terminal report."""
+def format_cli_report(change_set: ChangeSet, result: TestIntelligenceResult) -> str:
+    """Format the Increment 3 intelligence output into an explainable terminal report."""
     divider = "=" * 50
     subdivider = "-" * 50
 
     lines = [
         divider,
         "TRAVELGUARD AI",
-        "CHANGE IMPACT ANALYSIS",
+        "AUTONOMOUS TEST INTELLIGENCE",
         divider,
         "",
-        "Changed Files:",
-        "",
+        "CHANGE",
+        "Modified:",
     ]
 
     if not change_set.files:
@@ -60,72 +60,92 @@ def format_cli_report(change_set: ChangeSet, result: ImpactAnalysisResult) -> st
 
     lines.extend([
         "",
-        subdivider,
-        "CHANGE SUMMARY",
-        subdivider,
-        "",
-        f"{result.summary}",
-        "",
-        "Change Type:",
-        f"{result.change_type.upper()}" + (" (Behavioral)" if result.is_behavioral else " (Cosmetic)"),
+        "CHANGE TYPE:",
+        f"{result.impact.change_type.upper()}" + (" (Behavioral)" if result.impact.is_behavioral else " (Cosmetic)"),
         "",
         subdivider,
         "BUSINESS IMPACT",
         subdivider,
-        "",
     ])
 
-    if result.affected_journeys:
-        for j in result.affected_journeys:
-            lines.append(f"Affected Journey:\n{j.journey_name}")
-            lines.append(f"Capability:\n{j.capability}")
-            lines.append(f"Impact Level:\n{j.impact_level.upper()}")
+    if result.impact.affected_journeys:
+        j_names = ", ".join([j.journey_name for j in result.impact.affected_journeys])
+        lines.append(f"Journey:\n{j_names}")
+    else:
+        lines.append("Journey:\nNone directly impacted")
+
+    lines.extend([
+        f"Risk:\n{result.impact.risk.level.upper()}",
+        "",
+        f"Risk Score:\n{result.impact.risk.score}/100",
+        "",
+        f"Business Impact:\n{result.impact.business_impact}",
+        "",
+        subdivider,
+        "INTELLIGENT TEST SELECTION",
+        subdivider,
+    ])
+
+    # 1. Render Selected Tests
+    if result.selected_tests:
+        for t in result.selected_tests:
+            lines.append(f"{t.priority.value} ✓ {t.name} ({t.file})")
+            lines.append(f"   Reason: {t.reason}")
             lines.append("")
     else:
-        lines.append("Affected Journey:\nNone detected\n")
+        lines.append("No tests selected.")
+        lines.append("")
 
-    lines.append(f"Business Impact:\n{result.business_impact}\n")
+    # 2. Render Skipped Tests
+    if result.skipped_tests:
+        for t in result.skipped_tests:
+            lines.append(f"   ○ {t.name} ({t.file}) [SKIPPED]")
+            lines.append(f"   Reason: {t.reason}")
+            lines.append("")
 
+    # 3. Coverage Analysis
     lines.extend([
         subdivider,
-        "RISK",
+        "COVERAGE ANALYSIS",
         subdivider,
-        "",
-        f"Risk Level:\n{result.risk.level.upper()}",
-        "",
-        f"Risk Score:\n{result.risk.score}/100",
-        "",
-        f"Reason:\n{result.risk.reason}",
-        "",
-        subdivider,
-        "RECOMMENDED TESTS",
-        subdivider,
+        f"Existing coverage:\n{result.coverage.status.value}",
         "",
     ])
 
-    if result.recommended_tests:
-        for t in result.recommended_tests:
-            lines.append(f"✓ {t}")
+    if result.coverage.missing_scenarios:
+        for m in result.coverage.missing_scenarios:
+            lines.append(f"Missing scenario:\n{m}")
+            lines.append("")
     else:
-        lines.append("  (No tests recommended)")
+        lines.append(f"Coverage Assessment:\n{result.coverage.reason}\n")
 
+    # 4. AI Test Generation
     lines.extend([
-        "",
         subdivider,
-        "AI CONFIDENCE & ORCHESTRATION",
+        "AI TEST GENERATION",
         subdivider,
-        "",
-        f"Confidence: {int(result.confidence * 100)}%",
     ])
 
-    if result.provider_used:
-        prov_str = result.provider_used.capitalize()
-        if result.fallback_used:
-            prov_str += " (Fallback Engaged)"
-        lines.append(f"Provider:   {prov_str}")
+    if result.generated_test:
+        lines.append(f"Generated:\n{result.generated_test.file_path}")
+        lines.append("")
+        lines.append(f"Scenario:\n{result.generated_test.scenario_name}")
+        lines.append("")
+        lines.append(f"Validation:\n{result.generated_test.validation_status}")
+        if result.generated_test.validation_details:
+            lines.append(f"Details: {result.generated_test.validation_details}")
+    else:
+        lines.append("Status:\nNot required (existing test coverage is sufficient).")
 
+    # Provider metadata
     lines.extend([
         "",
+        subdivider,
+        "AI ORCHESTRATION & CONFIDENCE",
+        subdivider,
+        f"Confidence: {int(result.impact.confidence * 100)}%",
+        f"Provider:   {result.impact.provider_used.capitalize() if result.impact.provider_used else 'Groq'}"
+        + (" (Fallback Engaged)" if result.impact.fallback_used else ""),
         divider,
     ])
 
@@ -133,57 +153,43 @@ def format_cli_report(change_set: ChangeSet, result: ImpactAnalysisResult) -> st
 
 
 async def handle_analyze(args: argparse.Namespace) -> int:
-    """Handle the 'analyze' command."""
-    use_mock_llm = getattr(args, "mock_llm", False)
+    """Execute the Increment 3 test intelligence pipeline."""
+    pipeline = TestIntelligencePipeline()
 
-    # 1. Demo Mode
     if args.demo:
-        scenario_key = args.demo.lower()
-        if scenario_key not in DEMO_SCENARIOS:
-            print(f"Error: Unknown scenario '{args.demo}'. Available: {', '.join(DEMO_SCENARIOS.keys())}", file=sys.stderr)
+        scenario = DEMO_SCENARIOS.get(args.demo)
+        if not scenario:
+            print(f"Error: Unknown demo scenario '{args.demo}'", file=sys.stderr)
             return 1
-
-        print(f"[TravelGuard] Running demo scenario: {DEMO_SCENARIOS[scenario_key]['name']}...")
-        try:
-            change_set, result = await run_demo_scenario(scenario_key=scenario_key, use_mock_llm=use_mock_llm)
-        except Exception as exc:
-            # If live LLM call fails without API keys and user didn't specify --mock-llm, attempt mock fallback
-            if not use_mock_llm and ("API key" in str(exc) or "401" in str(exc)):
-                print(f"[TravelGuard] Notice: Live LLM call failed ({exc}). Falling back to deterministic demo fixture.")
-                change_set, result = await run_demo_scenario(scenario_key=scenario_key, use_mock_llm=True)
-            else:
-                print(f"Error executing analysis: {exc}", file=sys.stderr)
-                return 1
-
-    # 2. Live Git working tree or commit ref
-    else:
-        if args.ref:
-            print(f"[TravelGuard] Inspecting changes against git ref: {args.ref}...")
-            source = GitCommitDiffSource(base_ref=args.ref)
-        else:
-            print("[TravelGuard] Inspecting git working tree changes...")
-            source = GitWorkingTreeSource()
-
+        print(f"[TravelGuard] Running demo scenario: {scenario['name']}...")
+        raw_diff = load_scenario_diff(args.demo)
+        source = FixtureChangeSource(raw_diff=raw_diff, fixture_name=scenario["name"])
         detector = ChangeDetector(source=source)
         change_set = detector.get_change_set()
-
-        if not change_set.files:
-            print("\n[TravelGuard] No code changes detected in the current working tree or specified ref.")
-            print("Tip: You can run a demo scenario via: python -m travelguard analyze --demo scenario_a\n")
-            return 0
-
-        analyzer = ChangeImpactAnalyzer()
-        try:
-            result = await analyzer.analyze(change_set=change_set)
-        except Exception as exc:
-            print(f"Error executing LLM analysis: {exc}", file=sys.stderr)
-            return 1
-
-    # Output formatting
-    if getattr(args, "json", False):
-        print(result.model_dump_json(indent=2))
+        mock_payload = scenario.get("mock_response") if args.mock_llm else None
+    elif args.ref:
+        print(f"[TravelGuard] Detecting changes against Git ref: {args.ref}...")
+        source = GitCommitDiffSource(base_ref=args.ref)
+        detector = ChangeDetector(source=source)
+        change_set = detector.get_change_set()
+        mock_payload = None
     else:
-        print("\n" + format_cli_report(change_set, result))
+        print("[TravelGuard] Detecting changes in working tree...")
+        source = GitWorkingTreeSource()
+        detector = ChangeDetector(source=source)
+        change_set = detector.get_change_set()
+        mock_payload = None
+
+    try:
+        result = await pipeline.run(change_set=change_set, mock_response=mock_payload)
+    except Exception as exc:
+        print(f"[TravelGuard Error] Pipeline failed: {exc}", file=sys.stderr)
+        return 1
+
+    if args.json:
+        print(json.dumps(result.model_dump(), indent=2))
+    else:
+        print("\n" + format_cli_report(change_set, result) + "\n")
 
     return 0
 
@@ -208,6 +214,27 @@ def handle_journeys(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_test_inventory(args: argparse.Namespace) -> int:
+    """Display registered test inventory."""
+    inventory = get_test_inventory()
+    tests = inventory.get_all()
+
+    print("\n" + "=" * 60)
+    print("TRAVELGUARD — REGISTERED TEST INVENTORY")
+    print("=" * 60)
+    for t in tests:
+        print(f"\nTest ID:     {t.id}")
+        print(f"  Name:        {t.name}")
+        print(f"  File:        {t.file}")
+        print(f"  Tier:        {t.priority_tier.value}")
+        print(f"  Criticality: {t.criticality.upper()}")
+        print(f"  Journeys:    {', '.join(t.business_journeys)}")
+        print(f"  Description: {t.description}")
+        print(f"  Duration:    ~{t.expected_duration_ms}ms")
+    print("\n" + "=" * 60 + "\n")
+    return 0
+
+
 def handle_demo_list(args: argparse.Namespace) -> int:
     """List available demo scenarios."""
     print("\n" + "=" * 60)
@@ -227,12 +254,12 @@ def build_parser() -> argparse.ArgumentParser:
     """Construct CLI argument parser."""
     parser = argparse.ArgumentParser(
         prog="travelguard",
-        description="TravelGuard AI — Change Detection & Business Impact Analysis",
+        description="TravelGuard AI — Autonomous Test Intelligence Platform",
     )
     subparsers = parser.add_subparsers(dest="command", help="Available subcommands")
 
     # Command: analyze
-    analyze_parser = subparsers.add_parser("analyze", help="Analyze repository code changes")
+    analyze_parser = subparsers.add_parser("analyze", help="Analyze repository code changes and select/generate tests")
     analyze_parser.add_argument(
         "--ref",
         "-r",
@@ -246,7 +273,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         choices=list(DEMO_SCENARIOS.keys()),
-        help="Run a predefined deterministic demo scenario (scenario_a, scenario_b, scenario_c)",
+        help="Run a predefined deterministic demo scenario (scenario_a, scenario_b, scenario_c, scenario_d)",
     )
     analyze_parser.add_argument(
         "--json",
@@ -262,6 +289,9 @@ def build_parser() -> argparse.ArgumentParser:
     # Command: journeys
     subparsers.add_parser("journeys", help="List registered business user journeys")
 
+    # Command: test-inventory
+    subparsers.add_parser("test-inventory", help="List registered test inventory")
+
     # Command: demo
     subparsers.add_parser("demo", help="List available hackathon demo scenarios")
 
@@ -274,7 +304,6 @@ def main() -> None:
     args = parser.parse_args()
 
     if not args.command:
-        # Default to analyze if no command specified
         args.command = "analyze"
         args.ref = None
         args.demo = None
@@ -285,6 +314,8 @@ def main() -> None:
         exit_code = asyncio.run(handle_analyze(args))
     elif args.command == "journeys":
         exit_code = handle_journeys(args)
+    elif args.command == "test-inventory":
+        exit_code = handle_test_inventory(args)
     elif args.command == "demo":
         exit_code = handle_demo_list(args)
     else:

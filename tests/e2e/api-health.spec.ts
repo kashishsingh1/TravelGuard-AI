@@ -64,16 +64,15 @@ test.describe('TEST 5: Backend & Booking API Health Checks', () => {
     // Ensure no API keys or raw authorization tokens are present anywhere in the response
     const rawText = JSON.stringify(data);
     expect(rawText).not.toContain('Bearer');
-    expect(rawText).not.toContain('DEEPSEEK_API_KEY');
     expect(rawText).not.toContain('GROQ_API_KEY');
+    expect(rawText).not.toContain('OPENROUTER_API_KEY');
+    expect(rawText).not.toContain('GEMINI_API_KEY');
 
-    // If keys are not set locally, success will be false with an error message
-    // If keys are set, success will be true with provider and model
-    if (data.success) {
-      expect(['deepseek', 'groq']).toContain(data.provider);
-      expect(data).toHaveProperty('model');
-    } else {
-      expect(data).toHaveProperty('error');
-    }
+    // Verify 3-tier health structure
+    expect(data).toHaveProperty('primary');
+    expect(data.primary).toHaveProperty('provider');
+    expect(data.primary.provider).toBe('groq');
+    expect(data).toHaveProperty('fallbacks');
+    expect(data.fallbacks).toBeInstanceOf(Array);
   });
 });

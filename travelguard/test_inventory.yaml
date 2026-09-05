@@ -1,0 +1,83 @@
+# ==============================================================================
+# TravelGuard AI — Machine-Readable Test Inventory
+# Maps actual Playwright and API tests to business journeys and criticality
+# ==============================================================================
+
+version: "1.0"
+tests:
+  - id: "flight-booking"
+    name: "End-to-End Flight Booking"
+    file: "tests/e2e/booking.spec.ts"
+    description: "Validates full booking workflow from search to confirmation with SKB-XXXXX booking ID generation."
+    business_journeys:
+      - "flight_booking"
+      - "flight_selection"
+      - "flight_search"
+    criticality: "critical"
+    priority_tier: "P0"
+    tags:
+      - "booking"
+      - "e2e"
+      - "critical"
+      - "core_workflow"
+    expected_duration_ms: 1200
+
+  - id: "booking-api"
+    name: "API Health & Booking Contract"
+    file: "tests/e2e/api-health.spec.ts"
+    description: "Validates backend health probe, flight inventory query, booking creation contract, and LLM diagnostic health."
+    business_journeys:
+      - "flight_booking"
+      - "api_services"
+    criticality: "critical"
+    priority_tier: "P0"
+    tags:
+      - "api"
+      - "backend"
+      - "health"
+      - "critical"
+      - "contract"
+    expected_duration_ms: 500
+
+  - id: "passenger-validation"
+    name: "Passenger Form Validation"
+    file: "tests/e2e/validation.spec.ts"
+    description: "Validates rejection of empty inputs, malformed email formatting, and short phone numbers in passenger form."
+    business_journeys:
+      - "flight_booking"
+    criticality: "high"
+    priority_tier: "P1"
+    tags:
+      - "validation"
+      - "passenger"
+      - "e2e"
+    expected_duration_ms: 800
+
+  - id: "flight-selection"
+    name: "Flight Selection Workflow"
+    file: "tests/e2e/select-flight.spec.ts"
+    description: "Validates selecting an available flight from search results and transitioning to passenger details."
+    business_journeys:
+      - "flight_selection"
+      - "flight_search"
+    criticality: "high"
+    priority_tier: "P1"
+    tags:
+      - "selection"
+      - "e2e"
+      - "ui"
+    expected_duration_ms: 600
+
+  - id: "flight-search"
+    name: "Flight Search Workflow"
+    file: "tests/e2e/search.spec.ts"
+    description: "Validates flight search form submission, date selection, and display of matching flight cards."
+    business_journeys:
+      - "flight_search"
+    criticality: "high"
+    priority_tier: "P1"
+    tags:
+      - "search"
+      - "e2e"
+      - "ui"
+    expected_duration_ms: 600

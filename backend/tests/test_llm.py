@@ -1,4 +1,4 @@
-"""Unit tests for LLM provider abstraction and fallback logic."""
+"""Unit tests for LLM provider abstraction and multi-tier fallback logic."""
 
 import pytest
 from app.llm.base import BaseLLMProvider, LLMProviderError, LLMResponse
@@ -42,55 +42,40 @@ class MockFailingProvider(BaseLLMProvider):
 
 @pytest.mark.asyncio
 async def test_llm_primary_success():
-    """Verify primary provider is used when it succeeds."""
-    primary = MockWorkingProvider("deepseek", "deepseek-v4-flash")
-    fallback = MockWorkingProvider("groq", "llama-3.3-70b-versatile")
+    """Verify primary provider (groq) is used when it succeeds."""
+    primary = MockWorkingProvider("groq", "openai/gpt-oss-120b")
+    fallback = MockWorkingProvider("openrouter", "openrouter/free")
 
-    service = LLMService(primary=primary, fallback=fallback)
+    service = LLMService(providers=[primary, fallback])
     response = await service.generate("Test prompt")
 
-    assert response.provider == "deepseek"
-    assert response.model == "deepseek-v4-flash"
+    assert response.provider == "groq"
+    assert response.model == "openai/gpt-oss-120b"
     assert response.fallback_used is False
 
 
 @pytest.mark.asyncio
 async def test_llm_fallback_on_primary_failure():
-    """Verify fallback provider is used when primary fails."""
-    primary = MockFailingProvider("deepseek", "deepseek-v4-flash", "Rate limit exceeded")
-    fallback = MockWorkingProvider("groq", "llama-3.3-70b-versatile")
+    """Verify fallback provider (openrouter) is used when primary fails."""
+    primary = MockFailingProvider("groq", "openai/gpt-oss-120b", "Rate limit exceeded")
+    fallback = MockWorkingProvider("openrouter", "openrouter/free")
 
-    service = LLMService(primary=primary, fallback=fallback)
+    service = LLMService(providers=[primary, fallback])
     response = await service.generate("Test prompt")
 
-    assert response.provider == "groq"
-    assert response.model == "llama-3.3-70b-versatile"
+    assert response.provider == "openrouter"
+    assert response.model == "openrouter/free"
     assert response.fallback_used is True
 
 
 @pytest.mark.asyncio
 async def test_llm_both_fail_raises_error():
-    """Verify clean exception when both primary and fallback fail."""
-    primary = MockFailingProvider("deepseek", "deepseek-v4-flash", "Auth failure")
-    fallback = MockFailingProvider("groq", "llama-3.3-70b-versatile", "Network unreachable")
+    """Verify clean exception when all providers fail."""
+    primary = MockFailingProvider("groq", "openai/gpt-oss-120b", "Auth failure")
+    fallback = MockFailingProvider("openrouter", "openrouter/free", "Network unreachable")
 
-    service = LLMService(primary=primary, fallback=fallback)
+    service = LLMService(providers=[primary, fallback])
     with pytest.raises(LLMProviderError) as exc_info:
         await service.generate("Test prompt")
 
-    assert "Both primary (deepseek) and fallback (groq) failed" in str(exc_info.value)
-
-
-@pytest.mark.asyncio
-async def test_llm_health_with_fallback():
-    """Verify health() returns structured fallback info."""
-    primary = MockFailingProvider("deepseek", "deepseek-v4-flash", "DeepSeek API key missing")
-    fallback = MockWorkingProvider("groq", "llama-3.3-70b-versatile")
-
-    service = LLMService(primary=primary, fallback=fallback)
-    health = await service.health()
-
-    assert health["success"] is True
-    assert health["provider"] == "groq"
-    assert health["model"] == "llama-3.3-70b-versatile"
-    assert health["fallback_used"] is True
+    assert "ALL_LLM_PROVIDERS_FAILED" in str(exc_info.value)

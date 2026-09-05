@@ -1,4 +1,4 @@
-"""Groq primary LLM provider implementation."""
+"""OpenRouter secondary LLM provider implementation."""
 
 import time
 from typing import Optional
@@ -7,17 +7,17 @@ import httpx
 from app.llm.base import BaseLLMProvider, LLMProviderError, LLMResponse
 
 
-class GroqProvider(BaseLLMProvider):
-    """Groq LLM provider using OpenAI-compatible API protocol."""
+class OpenRouterProvider(BaseLLMProvider):
+    """OpenRouter fallback LLM provider using OpenAI-compatible API protocol."""
 
     def __init__(
         self,
         api_key: str,
-        model: str = "openai/gpt-oss-120b",
-        base_url: str = "https://api.groq.com/openai/v1",
-        timeout: float = 12.0,
+        model: str = "openrouter/free",
+        base_url: str = "https://openrouter.ai/api/v1",
+        timeout: float = 15.0,
     ):
-        self.name = "groq"
+        self.name = "openrouter"
         self.api_key = api_key.strip() if api_key else ""
         self.model = model
         self.base_url = base_url.rstrip("/")
@@ -30,11 +30,11 @@ class GroqProvider(BaseLLMProvider):
         max_tokens: int = 150,
         temperature: float = 0.7,
     ) -> LLMResponse:
-        """Execute chat completion request to Groq."""
+        """Execute chat completion request to OpenRouter."""
         if not self.api_key:
             raise LLMProviderError(
                 provider=self.name,
-                message="GROQ_API_KEY is not set or empty",
+                message="OPENROUTER_API_KEY is not set or empty",
                 status_code=401,
             )
 
@@ -47,6 +47,8 @@ class GroqProvider(BaseLLMProvider):
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/kashishsingh1/TravelGuard-AI",
+            "X-Title": "TravelGuard AI",
         }
         payload = {
             "model": self.model,
@@ -81,12 +83,13 @@ class GroqProvider(BaseLLMProvider):
                     )
 
                 data = response.json()
-                content = data["choices"][0]["message"]["content"]
+                msg = data["choices"][0]["message"]
+                content = msg.get("content") or msg.get("reasoning") or ""
                 return LLMResponse(
                     content=content,
                     provider=self.name,
                     model=self.model,
-                    fallback_used=False,
+                    fallback_used=True,
                     latency_ms=round(latency, 2),
                 )
         except httpx.TimeoutException as exc:
@@ -115,6 +118,6 @@ class GroqProvider(BaseLLMProvider):
         return await self.generate(
             prompt="Respond with 'pong'",
             system_prompt="You are a health probe. Reply with only 'pong'.",
-            max_tokens=5,
+            max_tokens=60,
             temperature=0.0,
         )
