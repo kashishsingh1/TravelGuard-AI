@@ -27,7 +27,25 @@ $$\text{Flight Search} \longrightarrow \text{Flight Results} \longrightarrow \te
 
 ---
 
-### 3. Architecture & Intelligence Pipeline
+### 3. Interactive Developer Console (Web Dashboard)
+
+While developers work on any travel application locally, they can launch and interact with the **TravelGuard AI Developer Console** in their browser at `http://localhost:5173`:
+
+- **Seamless Dual-Mode**: Switch between the customer-facing **SkyBook Booking App** and the **TravelGuard Dev Console** via the top header toggle or the floating quick launcher.
+- **One-Click Autonomous Demo Triggers**:
+  - **Scenario A**: Booking UI Drift & Self-Healing (`TEST_DRIFT` &rarr; `RELEASE ALLOWED`)
+  - **Scenario B**: Booking API Defect (`PRODUCT_DEFECT` &rarr; `RELEASE BLOCKED`)
+  - **Scenario C**: Environment Failure (`ENVIRONMENT_FAILURE` &rarr; `RELEASE BLOCKED`)
+  - **Scenario D**: Promo Code Feature & Test Gen (`COVERAGE GAP` &rarr; `Playwright Gen`)
+  - **Live Local Git Changes**: Real-time analysis of uncommitted local working tree diffs.
+- **7-Stage Visual Pipeline Stepper**: Live animated stage pills (Change Detect &rarr; Journey Mapping &rarr; Test Selection &rarr; Execution &rarr; AI Diagnosis &rarr; Self-Healing &rarr; Release Gate).
+- **Executive Release Verdict Banner**: Glowing emerald banner for `RELEASE ALLOWED` and vibrant rose for `RELEASE BLOCKED` with exact exit code and confidence percentage.
+- **Visual Self-Healing Inspector**: Interactive diff viewer displaying `- Old Locator` &rarr; `+ Repaired Locator`, patch status, and automated re-validation results.
+- **AI Test Generator Playground**: Displays generated Playwright TypeScript tests with line numbers and a 1-click **Copy Code** button.
+
+---
+
+### 4. Architecture & Intelligence Pipeline
 
 ```
 Git Working Tree / Commits / PRs / Preset Fixtures
@@ -81,7 +99,7 @@ Git Working Tree / Commits / PRs / Preset Fixtures
 
 ---
 
-### 4. Resilient 3-Tier Multi-Provider LLM Hierarchy
+### 5. Resilient 3-Tier Multi-Provider LLM Hierarchy
 
 All LLM calls flow through an observable fallback router. If any provider fails, the router immediately attempts the next tier:
 
@@ -97,7 +115,7 @@ Health check endpoint: `GET /api/llm/health` reports status across all 3 tiers w
 
 ---
 
-### 5. Machine-Readable Test Inventory
+### 6. Machine-Readable Test Inventory
 
 Registered in `travelguard/test_inventory.yaml`, representing actual tests in the repository:
 
@@ -116,7 +134,7 @@ python -m travelguard test-inventory
 
 ---
 
-### 6. Repository Structure
+### 7. Repository Structure
 
 ```
 TravelGuard-AI/
@@ -159,12 +177,19 @@ TravelGuard-AI/
 │   └── grafana/
 │       └── dashboard.json        # Pre-configured Grafana QA dashboard
 ├── frontend/                     # SkyBook React + TypeScript + Vite SUT
+│   ├── src/
+│   │   ├── travelguard/          # TravelGuard AI Developer Console (Web Dashboard)
+│   │   │   ├── TravelGuardConsole.tsx
+│   │   │   ├── travelguard.css
+│   │   │   └── types.ts
+│   │   ├── components/           # SkyBook Booking UI components
+│   │   └── App.tsx               # Dual SUT & TravelGuard Console state
 ├── backend/                      # Python FastAPI Backend
 │   ├── app/
-│   │   ├── api/                  # /api/health, /api/flights, /api/book, /api/llm, /api/metrics
+│   │   ├── api/                  # /api/health, /api/flights, /api/book, /api/llm, /api/metrics, /api/travelguard
 │   │   ├── llm/                  # 3-Tier Provider abstraction (Groq, OpenRouter, Gemini)
 │   │   └── main.py               # App configuration & Prometheus instrumentations
-│   └── tests/                    # Backend unit & router fallback tests
+│   └── tests/                    # Backend unit, router fallback & TravelGuard API tests
 ├── tests/                        # Playwright Test Suite (TypeScript)
 ├── docs/
 │   ├── increment-2.md
@@ -178,7 +203,7 @@ TravelGuard-AI/
 
 ---
 
-### 7. How to Run TravelGuard CLI
+### 8. How to Run TravelGuard CLI
 
 From the repository root:
 
@@ -226,7 +251,7 @@ python -m travelguard demo
 
 ---
 
-### 8. Example Analysis Output (Scenario D: New Feature)
+### 9. Example Analysis Output (Scenario D: New Feature)
 
 ```
 ==================================================
@@ -312,7 +337,7 @@ Fallback Used: No
 
 ---
 
-### 9. How to Run Automated Tests
+### 10. How to Run Automated Tests
 
 Execute the complete automated test suite across all subsystems (**140 unit, intelligence & integration tests passing**):
 
@@ -332,7 +357,7 @@ cd tests && npx playwright test
 
 ---
 
-### 10. Autonomous QA Demo Commands (Deterministic)
+### 11. Autonomous QA Demo Commands (Deterministic)
 
 Run fully deterministic, reproducible demo scenarios demonstrating autonomous failure classification, self-healing, and release quality gating:
 
@@ -352,7 +377,7 @@ python -m travelguard autonomous-demo --demo environment-failure --mock-llm
 
 ---
 
-### 11. CI/CD Quality Gate & Production Observability
+### 12. CI/CD Quality Gate & Production Observability
 
 #### A. Standardized Quality Gate Exit Codes
 The Quality Gate (`travelguard/quality_gate.py`) returns standard exit codes for seamless CI/CD integration:
@@ -382,7 +407,7 @@ python -m travelguard autonomous-run --quality-gate
 
 ---
 
-### 12. How to Start the SkyBook Application
+### 13. How to Start the SkyBook Application
 
 #### Start Backend
 ```bash
@@ -399,7 +424,7 @@ SkyBook frontend opens at `http://localhost:5173`.
 
 ---
 
-### 13. Incremental Roadmap
+### 14. Incremental Roadmap
 
 ```
 Git / Application Changes
