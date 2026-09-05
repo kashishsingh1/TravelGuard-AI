@@ -362,9 +362,9 @@ export const TravelGuardConsole: React.FC<TravelGuardConsoleProps> = ({ onSwitch
                     </span>
                   </div>
                   <div className="tg-meta-item">
-                    <span className="tg-meta-item-label">LLM Provider</span>
-                    <span className="tg-meta-item-value" style={{ fontSize: '0.85rem' }}>
-                      {impact?.provider_used || '—'}
+                    <span className="tg-meta-item-label">Selected Tests</span>
+                    <span className="tg-meta-item-value" style={{ color: 'var(--tg-cyan)' }}>
+                      {selectedTests.length}
                     </span>
                   </div>
                 </>}
@@ -690,14 +690,13 @@ export const TravelGuardConsole: React.FC<TravelGuardConsoleProps> = ({ onSwitch
               </div>
             )}
 
-            {/* ⑨ AI Orchestration Footer */}
+            {/* ⑨ Analysis Meta Footer */}
             {impact && (
               <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', fontSize: '0.78rem', color: 'var(--tg-text-dim)', paddingBottom: '0.5rem' }}>
-                <span>🤖 Provider: <strong style={{ color: 'var(--tg-text-muted)' }}>{impact.provider_used || '—'}</strong></span>
-                <span>🎯 Confidence: <strong style={{ color: 'var(--tg-text-muted)' }}>
+                <span>🎯 Analysis Confidence: <strong style={{ color: 'var(--tg-text-muted)' }}>
                   {impact.confidence ? `${Math.round(impact.confidence * 100)}%` : '—'}
                 </strong></span>
-                {impact.fallback_used && <span style={{ color: 'var(--tg-amber)' }}>⚡ LLM fallback triggered</span>}
+                {impact.fallback_used && <span style={{ color: 'var(--tg-amber)' }}>⚡ Automated fallback engaged</span>}
               </div>
             )}
           </div>
