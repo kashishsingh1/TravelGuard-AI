@@ -127,7 +127,7 @@ export const App: React.FC = () => {
             SkyBook Travel System • Controlled System Under Test (SUT) for{' '}
             <strong>TravelGuard AI</strong>
           </p>
-          <span className="footer-version">v0.1.0 • Increment 1</span>
+          <span className="footer-version">v1.0.0</span>
         </div>
       </footer>
     </div>

@@ -40,7 +40,7 @@ export const Header: React.FC<HeaderProps> = ({ currentStep, onReset }) => {
 
         <div className="sut-badge" title="System Under Test for TravelGuard AI">
           <ShieldCheck size={16} className="sut-icon" />
-          <span>TravelGuard SUT • Increment 1</span>
+          <span>TravelGuard SUT</span>
         </div>
       </div>
 
