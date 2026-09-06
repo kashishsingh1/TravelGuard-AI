@@ -7,6 +7,7 @@ router = APIRouter(tags=["Observability"])
 
 
 @router.get("/metrics", summary="Prometheus metrics")
+@router.get("/api/metrics", summary="Prometheus metrics (API alias)")
 async def metrics():
     """Return Prometheus-compatible metrics text format."""
     content = get_prometheus_metrics_text()
